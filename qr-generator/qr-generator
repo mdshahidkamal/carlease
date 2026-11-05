@@ -1,0 +1,28 @@
+import qrcode
+from PIL import Image
+
+# A-SQUARE website URL
+website_url = "https://qr-company-profile-2026.s3.ap-southeast-2.amazonaws.com/index.html"
+
+# QR Code configuration
+qr = qrcode.QRCode(
+    version=1,
+    error_correction=qrcode.constants.ERROR_CORRECT_H,
+    box_size=15,
+    border=4
+)
+
+# Add website URL
+qr.add_data(website_url)
+qr.make(fit=True)
+
+# Generate QR image
+qr_image = qr.make_image(
+    fill_color="black",
+    back_color="white"
+)
+
+# Save QR code
+qr_image.save("output/A-SQUARE_QR.png")
+
+print("QR Code generated successfully!")

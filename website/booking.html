@@ -8,20 +8,49 @@
 <title>Book My Cab | Royal Limo Service</title>
 <style>
 :root{color-scheme:dark;--bg:#090909;--panel:#151515;--soft:#202020;--red:#d92735;--gold:#d6b36a;--white:#f8f6f2;--muted:#aaa6a2;--line:rgba(255,255,255,.13)}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% -10%,rgba(217,39,53,.15),transparent 45%),var(--bg);color:var(--white);font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}a{color:inherit;text-decoration:none}button,input,select,textarea{font:inherit}
-.shell{width:min(100% - 28px,900px);margin:auto;padding:22px 0 48px}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;padding-bottom:18px;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:11px}.brand-mark{display:grid;place-items:center;width:42px;height:42px;border:1px solid #9c814b;border-radius:11px;color:var(--gold);font:24px Georgia}.brand-name{font:19px Georgia,serif;letter-spacing:.03em}.brand-tag{margin-top:3px;color:var(--muted);font-size:10px;letter-spacing:.14em;text-transform:uppercase}.back{font-size:13px;color:#e8d8b8;white-space:nowrap}
-.heading{padding:26px 0 20px}.eyebrow{color:var(--gold);font-size:10px;font-weight:800;letter-spacing:.2em;text-transform:uppercase}h1{margin:7px 0;font:clamp(32px,6vw,44px) Georgia,serif;font-weight:500}.lead{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth;scroll-padding-top:16px}
+body{margin:0;min-width:320px;background:radial-gradient(ellipse at 50% -10%,rgba(217,39,53,.15),transparent 45%),var(--bg);color:var(--white);font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+a{color:inherit;text-decoration:none}button,input,select,textarea{font:inherit}
+.shell{width:min(100% - 28px,900px);margin:auto;padding:18px 0 36px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-bottom:15px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}.brand-mark{display:grid;place-items:center;width:40px;height:40px;flex:0 0 40px;border:1px solid #9c814b;border-radius:11px;color:var(--gold);font:23px Georgia}.brand-name{display:block;font:18px Georgia,serif;letter-spacing:.02em}.brand-tag{display:block;margin-top:3px;color:var(--muted);font-size:9px;letter-spacing:.12em;text-transform:uppercase}.back{display:flex;align-items:center;min-height:42px;padding:0 4px;font-size:12px;color:#e8d8b8;white-space:nowrap}
+.heading{padding:23px 0 17px}.eyebrow{color:var(--gold);font-size:10px;font-weight:800;letter-spacing:.2em;text-transform:uppercase}h1{margin:7px 0;font:clamp(31px,6vw,44px) Georgia,serif;font-weight:500}.lead{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
 .card{padding:clamp(16px,3vw,26px);border:1px solid rgba(214,179,106,.22);border-radius:17px;background:linear-gradient(145deg,rgba(255,255,255,.025),transparent 55%),var(--panel);box-shadow:0 22px 65px #0006}
-.section{padding:0 0 22px}.section+.section{padding-top:21px;border-top:1px solid var(--line)}.section-title{display:flex;align-items:center;gap:9px;margin:0 0 15px;font-size:15px}.num{display:grid;place-items:center;width:25px;height:25px;border-radius:8px;background:#d927352b;color:#ff7c84;font-size:11px}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.field{min-width:0}.field.full{grid-column:1/-1}label{display:block;margin:0 0 7px;color:#e9e4df;font-size:12px;font-weight:650}.req{color:#ff7880}
-input,select,textarea{display:block;width:100%;min-height:45px;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:var(--soft);color:var(--white);outline:none}input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px #d6b36a1c}input::placeholder,textarea::placeholder{color:#777}textarea{min-height:78px;resize:vertical}.hint{margin:6px 0 0;color:#89847e;font-size:10px;line-height:1.5}
-.vehicle-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}.vehicle{position:relative;min-width:0}.vehicle input{position:absolute;opacity:0;pointer-events:none}.vehicle label{display:block;overflow:hidden;margin:0;border:1px solid var(--line);border-radius:12px;background:var(--soft);cursor:pointer;transition:.15s}.vehicle input:checked+label{border-color:var(--red);box-shadow:0 0 0 1px var(--red),0 8px 24px #d9273520}.vehicle input:focus-visible+label{outline:2px solid var(--gold);outline-offset:3px}.vehicle img{display:block;width:100%;height:105px;object-fit:cover;background:#292929}.vehicle-info{padding:10px}.vehicle-name{font-size:12px;font-weight:750}.capacity{margin-top:5px;color:var(--muted);font-size:10px}.selected-tag{display:none;margin-top:7px;color:#ff858c;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.vehicle input:checked+label .selected-tag{display:block}
-.count-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}.count-grid .field{min-width:0}
-.submit{display:flex;align-items:center;gap:15px;padding-top:20px;border-top:1px solid var(--line)}.submit button{min-height:50px;padding:0 27px;border:0;border-radius:99px;background:var(--red);color:white;font-weight:800;font-size:13px;cursor:pointer}.submit button:hover{background:#ef3947}.submit button:disabled{opacity:.6;cursor:wait}.submit-note{color:var(--muted);font-size:10px;line-height:1.5}
-.notice{display:none;margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:10px;font-size:12px;line-height:1.6}.notice.success{display:block;border-color:#75c99a88;background:#75c99a12;color:#c1f0d2}.notice.error{display:block;border-color:#ff858588;background:#ff858512;color:#ffc4c4}.notice strong{display:block;margin-bottom:4px}.booking-ref{margin-top:7px;font:700 16px ui-monospace,monospace;letter-spacing:.04em;color:inherit}
-footer{padding:19px 0 0;text-align:center;color:#777;font-size:10px;line-height:1.7}
-@media(max-width:700px){.vehicle-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.vehicle img{height:120px}}
-@media(max-width:480px){.shell{width:min(100% - 22px,900px);padding-top:14px}.brand-name{font-size:16px}.brand-mark{width:37px;height:37px}.grid{grid-template-columns:1fr}.field.full{grid-column:auto}.count-grid{grid-template-columns:1fr 1fr}.submit{align-items:stretch;flex-direction:column}.submit button{width:100%}.vehicle img{height:105px}}
+.section{padding:0 0 20px}.section+.section{padding-top:19px;border-top:1px solid var(--line)}.section-title{display:flex;align-items:center;gap:9px;margin:0 0 14px;font-size:15px}.num{display:grid;place-items:center;width:26px;height:26px;flex:0 0 26px;border-radius:8px;background:#d927352b;color:#ff7c84;font-size:11px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.field{min-width:0}.field.full{grid-column:1/-1}
+label{display:block;margin:0 0 7px;color:#e9e4df;font-size:12px;font-weight:650}.req{color:#ff7880}
+input,select,textarea{display:block;width:100%;min-width:0;min-height:49px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--soft);color:var(--white);outline:none;font-size:16px;line-height:1.25;touch-action:manipulation}
+input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px #d6b36a1c}
+input::placeholder,textarea::placeholder{color:#777;font-size:14px}
+input[type="date"],input[type="time"]{min-height:51px;padding:10px 9px}
+input[type="number"]{appearance:textfield;-moz-appearance:textfield}input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-outer-spin-button{opacity:1}
+textarea{min-height:82px;resize:vertical;line-height:1.5}.hint{margin:6px 0 0;color:#89847e;font-size:11px;line-height:1.5}
+.vehicle-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.vehicle{position:relative;min-width:0}.vehicle input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.vehicle label{display:block;overflow:hidden;min-height:100%;margin:0;border:1px solid var(--line);border-radius:12px;background:var(--soft);cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.vehicle input:checked+label{border-color:var(--red);box-shadow:0 0 0 1px var(--red),0 8px 24px #d9273520}.vehicle input:focus-visible+label{outline:2px solid var(--gold);outline-offset:3px}
+.vehicle img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;background:#292929}
+.vehicle-info{padding:10px 11px 11px}.vehicle-name{font-size:13px;font-weight:750;line-height:1.35}.capacity{margin-top:5px;color:var(--muted);font-size:11px;line-height:1.35}.selected-tag{display:none;margin-top:7px;color:#ff858c;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.vehicle input:checked+label .selected-tag{display:block}
+.count-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.count-grid .field{min-width:0}.count-grid label{font-size:11px}
+.submit{display:flex;align-items:center;gap:15px;padding-top:19px;border-top:1px solid var(--line)}.submit button{min-height:54px;padding:0 27px;border:0;border-radius:99px;background:var(--red);color:white;font-weight:800;font-size:15px;cursor:pointer;touch-action:manipulation}.submit button:hover{background:#ef3947}.submit button:disabled{opacity:.6;cursor:wait}.submit-note{color:var(--muted);font-size:11px;line-height:1.5}
+.notice{display:none;margin-top:15px;padding:14px;border:1px solid var(--line);border-radius:10px;font-size:13px;line-height:1.6;overflow-wrap:anywhere}.notice.success{display:block;border-color:#75c99a88;background:#75c99a12;color:#c1f0d2}.notice.error{display:block;border-color:#ff858588;background:#ff858512;color:#ffc4c4}.notice strong{display:block;margin-bottom:4px}.booking-ref{margin-top:7px;font:700 16px ui-monospace,monospace;letter-spacing:.04em;color:inherit}
+footer{padding:18px 0 0;text-align:center;color:#777;font-size:10px;line-height:1.7}
+@media(max-width:600px){
+  .shell{width:min(100% - 22px,520px);padding:12px 0 calc(26px + env(safe-area-inset-bottom))}
+  .top{padding-bottom:12px}.brand{gap:8px}.brand-mark{width:36px;height:36px;flex-basis:36px;font-size:21px}.brand-name{font-size:16px}.brand-tag{font-size:8px;letter-spacing:.1em}.back{min-height:42px;font-size:12px}
+  .heading{padding:19px 2px 15px}h1{font-size:34px}.lead{font-size:13px}
+  .card{padding:16px 13px;border-radius:15px}.section{padding-bottom:18px}.section+.section{padding-top:17px}.section-title{margin-bottom:12px;font-size:14px}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field.full{grid-column:1/-1}
+  .vehicle-grid{gap:9px}.vehicle-info{padding:9px}.vehicle-name{font-size:12px}.capacity{font-size:10px}
+  .count-grid{gap:8px}.count-grid label{min-height:28px;margin-bottom:5px;line-height:1.3}
+  .submit{align-items:stretch;flex-direction:column;gap:9px;padding-top:16px}.submit button{width:100%;min-height:56px;font-size:16px}.submit-note{text-align:center;font-size:10px}
+  footer{padding-bottom:5px}
+}
+@media(max-width:360px){
+  .shell{width:calc(100% - 16px)}.card{padding:14px 10px}.grid{gap:10px}.vehicle-grid{gap:7px}.vehicle-info{padding:8px}.vehicle-name{font-size:11px}.capacity{font-size:9px}.count-grid{gap:6px}.count-grid label{font-size:10px}
+  input,select,textarea{padding-left:10px;padding-right:10px}.back{font-size:11px}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important}}
 </style>
 </head>
 <body>

@@ -15,7 +15,7 @@ qr = qrcode.QRCode(
 # Add website URL
 qr.add_data(website_url)
 qr.make(fit=True)
-
+l̥
 # Generate QR image
 qr_image = qr.make_image(
     fill_color="black",

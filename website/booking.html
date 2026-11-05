@@ -1,357 +1,178 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#090909">
-  <meta name="description" content="Request a luxury chauffeur or limousine ride with Royal Limo Service in Atlanta, Georgia.">
-  <title>Book a Ride | Royal Limo Service</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #090909;
-      --panel: #141414;
-      --panel-soft: #1b1b1b;
-      --red: #d92735;
-      --red-hover: #ef3947;
-      --gold: #d6b36a;
-      --text: #f7f5f2;
-      --muted: #aaa6a2;
-      --line: rgba(255,255,255,.12);
-      --success: #75c99a;
-      --danger: #ff8585;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: radial-gradient(ellipse at 50% -15%, rgba(217,39,53,.16), transparent 42%), var(--bg);
-      color: var(--text);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
-    }
-    a { color: inherit; text-decoration: none; }
-    button, input, select, textarea { font: inherit; }
-    .shell { width: min(100% - 32px, 820px); margin: 0 auto; padding: 26px 0 54px; }
-    .topbar { display:flex; align-items:center; justify-content:space-between; gap:16px; padding-bottom:22px; border-bottom:1px solid var(--line); }
-    .brand { display:flex; align-items:center; gap:12px; min-width:0; }
-    .brand-mark { display:grid; place-items:center; width:42px; height:42px; flex:0 0 42px; border:1px solid rgba(214,179,106,.55); border-radius:12px; color:var(--gold); font-family:Georgia,serif; font-size:22px; }
-    .brand-name { font-family:Georgia, "Times New Roman", serif; font-size:19px; letter-spacing:.035em; }
-    .brand-sub { margin-top:3px; color:var(--muted); font-size:10px; letter-spacing:.16em; text-transform:uppercase; }
-    .back-link { color:#e4d4b5; font-size:13px; white-space:nowrap; }
-    .back-link:hover { color:white; }
-    .heading { padding:35px 0 25px; }
-    .eyebrow { color:var(--gold); font-size:11px; font-weight:800; letter-spacing:.2em; text-transform:uppercase; }
-    h1 { margin:10px 0 9px; font-family:Georgia, "Times New Roman", serif; font-size:clamp(34px, 7vw, 49px); font-weight:500; line-height:1.08; }
-    .lead { max-width:600px; margin:0; color:var(--muted); font-size:14px; line-height:1.7; }
-    .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:0 0 20px; }
-    .step { padding:11px 12px; border:1px solid var(--line); border-radius:10px; color:var(--muted); font-size:11px; }
-    .step strong { display:block; margin-bottom:4px; color:var(--gold); font-size:10px; letter-spacing:.12em; }
-    .form-card { padding:clamp(18px,4vw,30px); border:1px solid rgba(214,179,106,.22); border-radius:18px; background:linear-gradient(145deg, rgba(255,255,255,.035), transparent 55%), var(--panel); box-shadow:0 24px 70px rgba(0,0,0,.28); }
-    .form-section + .form-section { margin-top:28px; padding-top:25px; border-top:1px solid var(--line); }
-    .section-heading { display:flex; align-items:center; gap:10px; margin:0 0 17px; font-size:16px; font-weight:700; }
-    .section-number { display:grid; place-items:center; width:26px; height:26px; border-radius:8px; background:rgba(217,39,53,.17); color:#ff7a83; font-size:12px; }
-    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
-    .field { min-width:0; }
-    .field.full { grid-column:1/-1; }
-    label { display:block; margin-bottom:7px; color:#e9e5e0; font-size:12px; font-weight:650; }
-    .required { color:#ff777f; }
-    input, select, textarea {
-      display:block; width:100%; min-height:47px; padding:12px 13px;
-      border:1px solid rgba(255,255,255,.15); border-radius:9px;
-      outline:none; background:var(--panel-soft); color:var(--text);
-      transition:border-color .15s, box-shadow .15s;
-    }
-    input::placeholder, textarea::placeholder { color:#77736f; }
-    input:focus, select:focus, textarea:focus { border-color:var(--gold); box-shadow:0 0 0 3px rgba(214,179,106,.12); }
-    textarea { min-height:94px; resize:vertical; }
-    .hint { margin:7px 0 0; color:#85817d; font-size:11px; line-height:1.5; }
-    .vehicle-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-    .vehicle-option { position:relative; }
-    .vehicle-option input { position:absolute; width:1px; height:1px; opacity:0; }
-    .vehicle-option label { display:flex; align-items:center; min-height:57px; margin:0; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--panel-soft); cursor:pointer; font-size:12px; line-height:1.4; }
-    .vehicle-option input:checked + label { border-color:var(--red); background:rgba(217,39,53,.12); box-shadow:inset 0 0 0 1px var(--red); }
-    .vehicle-option input:focus-visible + label { outline:2px solid var(--gold); outline-offset:3px; }
-    .vehicle-option label::before { content:""; width:13px; height:13px; flex:0 0 13px; margin-right:10px; border:1px solid #777; border-radius:50%; }
-    .vehicle-option input:checked + label::before { border:4px solid var(--red); background:white; }
-    .submit-row { display:flex; align-items:center; gap:16px; margin-top:27px; }
-    .submit-button { min-height:50px; padding:0 24px; border:0; border-radius:99px; background:var(--red); color:white; font-size:13px; font-weight:800; cursor:pointer; transition:background .15s, transform .15s; }
-    .submit-button:hover { background:var(--red-hover); transform:translateY(-1px); }
-    .submit-button:disabled { opacity:.65; cursor:wait; transform:none; }
-    .submit-note { color:var(--muted); font-size:11px; line-height:1.5; }
-    .notice { display:none; margin-top:18px; padding:14px 15px; border:1px solid var(--line); border-radius:10px; font-size:13px; line-height:1.6; }
-    .notice.error { display:block; border-color:rgba(255,133,133,.4); background:rgba(255,133,133,.08); color:#ffc0c0; }
-    .notice.success { display:block; border-color:rgba(117,201,154,.4); background:rgba(117,201,154,.08); color:#b9f0ce; }
-    .notice strong { display:block; margin-bottom:3px; }
-    footer { padding:22px 0 0; color:#77736f; text-align:center; font-size:11px; line-height:1.7; }
-    @media(max-width:560px) {
-      .shell { width:min(100% - 24px, 820px); padding-top:16px; }
-      .brand-name { font-size:16px; }
-      .brand-mark { width:38px; height:38px; flex-basis:38px; }
-      .grid { grid-template-columns:1fr; gap:13px; }
-      .field.full { grid-column:auto; }
-      .vehicle-grid { grid-template-columns:1fr; }
-      .steps { gap:5px; }
-      .step { padding:9px 7px; font-size:10px; }
-      .submit-row { align-items:stretch; flex-direction:column; }
-      .submit-button { width:100%; }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#090909">
+<meta name="description" content="Book your luxury ride with Royal Limo Service in Atlanta, Georgia.">
+<title>Book My Cab | Royal Limo Service</title>
+<style>
+:root{color-scheme:dark;--bg:#090909;--panel:#151515;--soft:#202020;--red:#d92735;--gold:#d6b36a;--white:#f8f6f2;--muted:#aaa6a2;--line:rgba(255,255,255,.13)}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% -10%,rgba(217,39,53,.15),transparent 45%),var(--bg);color:var(--white);font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}a{color:inherit;text-decoration:none}button,input,select,textarea{font:inherit}
+.shell{width:min(100% - 28px,900px);margin:auto;padding:22px 0 48px}.top{display:flex;justify-content:space-between;align-items:center;gap:14px;padding-bottom:18px;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:11px}.brand-mark{display:grid;place-items:center;width:42px;height:42px;border:1px solid #9c814b;border-radius:11px;color:var(--gold);font:24px Georgia}.brand-name{font:19px Georgia,serif;letter-spacing:.03em}.brand-tag{margin-top:3px;color:var(--muted);font-size:10px;letter-spacing:.14em;text-transform:uppercase}.back{font-size:13px;color:#e8d8b8;white-space:nowrap}
+.heading{padding:26px 0 20px}.eyebrow{color:var(--gold);font-size:10px;font-weight:800;letter-spacing:.2em;text-transform:uppercase}h1{margin:7px 0;font:clamp(32px,6vw,44px) Georgia,serif;font-weight:500}.lead{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+.card{padding:clamp(16px,3vw,26px);border:1px solid rgba(214,179,106,.22);border-radius:17px;background:linear-gradient(145deg,rgba(255,255,255,.025),transparent 55%),var(--panel);box-shadow:0 22px 65px #0006}
+.section{padding:0 0 22px}.section+.section{padding-top:21px;border-top:1px solid var(--line)}.section-title{display:flex;align-items:center;gap:9px;margin:0 0 15px;font-size:15px}.num{display:grid;place-items:center;width:25px;height:25px;border-radius:8px;background:#d927352b;color:#ff7c84;font-size:11px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}.field{min-width:0}.field.full{grid-column:1/-1}label{display:block;margin:0 0 7px;color:#e9e4df;font-size:12px;font-weight:650}.req{color:#ff7880}
+input,select,textarea{display:block;width:100%;min-height:45px;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:var(--soft);color:var(--white);outline:none}input:focus,select:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px #d6b36a1c}input::placeholder,textarea::placeholder{color:#777}textarea{min-height:78px;resize:vertical}.hint{margin:6px 0 0;color:#89847e;font-size:10px;line-height:1.5}
+.vehicle-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}.vehicle{position:relative;min-width:0}.vehicle input{position:absolute;opacity:0;pointer-events:none}.vehicle label{display:block;overflow:hidden;margin:0;border:1px solid var(--line);border-radius:12px;background:var(--soft);cursor:pointer;transition:.15s}.vehicle input:checked+label{border-color:var(--red);box-shadow:0 0 0 1px var(--red),0 8px 24px #d9273520}.vehicle input:focus-visible+label{outline:2px solid var(--gold);outline-offset:3px}.vehicle img{display:block;width:100%;height:105px;object-fit:cover;background:#292929}.vehicle-info{padding:10px}.vehicle-name{font-size:12px;font-weight:750}.capacity{margin-top:5px;color:var(--muted);font-size:10px}.selected-tag{display:none;margin-top:7px;color:#ff858c;font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.vehicle input:checked+label .selected-tag{display:block}
+.count-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}.count-grid .field{min-width:0}
+.submit{display:flex;align-items:center;gap:15px;padding-top:20px;border-top:1px solid var(--line)}.submit button{min-height:50px;padding:0 27px;border:0;border-radius:99px;background:var(--red);color:white;font-weight:800;font-size:13px;cursor:pointer}.submit button:hover{background:#ef3947}.submit button:disabled{opacity:.6;cursor:wait}.submit-note{color:var(--muted);font-size:10px;line-height:1.5}
+.notice{display:none;margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:10px;font-size:12px;line-height:1.6}.notice.success{display:block;border-color:#75c99a88;background:#75c99a12;color:#c1f0d2}.notice.error{display:block;border-color:#ff858588;background:#ff858512;color:#ffc4c4}.notice strong{display:block;margin-bottom:4px}.booking-ref{margin-top:7px;font:700 16px ui-monospace,monospace;letter-spacing:.04em;color:inherit}
+footer{padding:19px 0 0;text-align:center;color:#777;font-size:10px;line-height:1.7}
+@media(max-width:700px){.vehicle-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.vehicle img{height:120px}}
+@media(max-width:480px){.shell{width:min(100% - 22px,900px);padding-top:14px}.brand-name{font-size:16px}.brand-mark{width:37px;height:37px}.grid{grid-template-columns:1fr}.field.full{grid-column:auto}.count-grid{grid-template-columns:1fr 1fr}.submit{align-items:stretch;flex-direction:column}.submit button{width:100%}.vehicle img{height:105px}}
+</style>
 </head>
 <body>
-  <main class="shell">
-    <nav class="topbar" aria-label="Main navigation">
-      <a class="brand" href="index.html" aria-label="Royal Limo Service home">
-        <span class="brand-mark" aria-hidden="true">R</span>
-        <span>
-          <span class="brand-name">Royal Limo Service</span>
-          <span class="brand-sub">Luxury Chauffeur Services</span>
-        </span>
-      </a>
-      <a class="back-link" href="index.html">← Back to home</a>
-    </nav>
+<main class="shell">
+  <nav class="top" aria-label="Main navigation">
+    <a class="brand" href="index.html"><span class="brand-mark">R</span><span><span class="brand-name">Royal Limo Service</span><span class="brand-tag">Luxury Chauffeur Services</span></span></a>
+    <a class="back" href="index.html">← Home</a>
+  </nav>
+  <header class="heading"><div class="eyebrow">Atlanta, Georgia</div><h1>Book your ride</h1><p class="lead">Enter your trip details, choose your vehicle and send your booking request. We’ll contact you to confirm your ride.</p></header>
 
-    <header class="heading">
-      <div class="eyebrow">Atlanta, Georgia</div>
-      <h1>Reserve your ride.</h1>
-      <p class="lead">Tell us about your journey and preferred vehicle. Our team will review your request and contact you to confirm the details.</p>
-    </header>
-
-    <div class="steps" aria-label="Booking steps">
-      <div class="step"><strong>01 / JOURNEY</strong>Pickup &amp; destination</div>
-      <div class="step"><strong>02 / RIDE</strong>Date, time &amp; vehicle</div>
-      <div class="step"><strong>03 / CONTACT</strong>Your details</div>
-    </div>
-
-    <form class="form-card" id="booking-form">
-      <section class="form-section" aria-labelledby="journey-heading">
-        <h2 class="section-heading" id="journey-heading"><span class="section-number">1</span> Your journey</h2>
-        <div class="grid">
-          <div class="field full">
-            <label for="pickup">Pickup location <span class="required">*</span></label>
-            <input id="pickup" name="pickup" type="text" placeholder="Enter pickup address or place" autocomplete="off" required>
-            <input id="pickup-place-id" name="pickupPlaceId" type="hidden">
-            <input id="pickup-lat" name="pickupLatitude" type="hidden">
-            <input id="pickup-lng" name="pickupLongitude" type="hidden">
-          </div>
-          <div class="field full">
-            <label for="dropoff">Drop-off location <span class="required">*</span></label>
-            <input id="dropoff" name="dropoff" type="text" placeholder="Enter destination address or place" autocomplete="off" required>
-            <input id="dropoff-place-id" name="dropoffPlaceId" type="hidden">
-            <input id="dropoff-lat" name="dropoffLatitude" type="hidden">
-            <input id="dropoff-lng" name="dropoffLongitude" type="hidden">
-            <p class="hint" id="maps-hint">Start typing an address or landmark. Google Maps suggestions will appear when Maps is configured.</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="form-section" aria-labelledby="ride-heading">
-        <h2 class="section-heading" id="ride-heading"><span class="section-number">2</span> Ride details</h2>
-        <div class="grid">
-          <div class="field">
-            <label for="travel-date">Pickup date <span class="required">*</span></label>
-            <input id="travel-date" name="pickupDate" type="date" required>
-          </div>
-          <div class="field">
-            <label for="travel-time">Pickup time <span class="required">*</span></label>
-            <input id="travel-time" name="pickupTime" type="time" required>
-          </div>
-          <div class="field">
-            <label for="passengers">Passengers <span class="required">*</span></label>
-            <select id="passengers" name="passengers" required>
-              <option value="">Select passengers</option>
-              <option value="1">1 passenger</option>
-              <option value="2">2 passengers</option>
-              <option value="3">3 passengers</option>
-              <option value="4">4 passengers</option>
-              <option value="5">5 passengers</option>
-              <option value="6">6 passengers</option>
-              <option value="7">7 passengers</option>
-              <option value="8">8 passengers</option>
-              <option value="9">9 passengers</option>
-              <option value="10">10 passengers</option>
-              <option value="11">11 passengers</option>
-              <option value="12">12 passengers</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="trip-type">Trip type</label>
-            <select id="trip-type" name="tripType">
-              <option value="One way">One way</option>
-              <option value="Round trip">Round trip</option>
-              <option value="Hourly">Hourly service</option>
-            </select>
-          </div>
-          <div class="field full">
-            <label>Preferred vehicle <span class="required">*</span></label>
-            <div class="vehicle-grid">
-              <div class="vehicle-option"><input id="vehicle-suv" type="radio" name="vehicleType" value="Luxury SUV" required><label for="vehicle-suv">Luxury SUV</label></div>
-              <div class="vehicle-option"><input id="vehicle-sedan" type="radio" name="vehicleType" value="Executive Sedan"><label for="vehicle-sedan">Executive Sedan</label></div>
-              <div class="vehicle-option"><input id="vehicle-stretch" type="radio" name="vehicleType" value="Stretch Limousine"><label for="vehicle-stretch">Stretch Limousine</label></div>
-              <div class="vehicle-option"><input id="vehicle-van" type="radio" name="vehicleType" value="Luxury Van"><label for="vehicle-van">Luxury Van</label></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="form-section" aria-labelledby="contact-heading">
-        <h2 class="section-heading" id="contact-heading"><span class="section-number">3</span> Your contact details</h2>
-        <div class="grid">
-          <div class="field">
-            <label for="customer-name">Full name <span class="required">*</span></label>
-            <input id="customer-name" name="customerName" type="text" placeholder="Your full name" autocomplete="name" maxlength="120" required>
-          </div>
-          <div class="field">
-            <label for="customer-phone">Mobile number <span class="required">*</span></label>
-            <input id="customer-phone" name="phone" type="tel" placeholder="+1 (___) ___-____" autocomplete="tel" maxlength="30" required>
-          </div>
-          <div class="field full">
-            <label for="customer-email">Email address <span class="required">*</span></label>
-            <input id="customer-email" name="email" type="email" placeholder="you@example.com" autocomplete="email" maxlength="160" required>
-          </div>
-          <div class="field full">
-            <label for="requirements">Special requests <span style="color:var(--muted);font-weight:400">(optional)</span></label>
-            <textarea id="requirements" name="specialRequirements" placeholder="Flight details, luggage, child seats, stops or anything else we should know." maxlength="1500"></textarea>
-          </div>
-        </div>
-      </section>
-
-      <div class="submit-row">
-        <button class="submit-button" id="submit-button" type="submit">Submit booking request&nbsp; →</button>
-        <div class="submit-note">Your request will be saved for our team to review. A booking is confirmed only after our team contacts you.</div>
+  <form class="card" id="booking-form">
+    <section class="section">
+      <h2 class="section-title"><span class="num">1</span> Journey details</h2>
+      <div class="grid">
+        <div class="field full"><label for="pickup">From / Pickup location <span class="req">*</span></label><input id="pickup" name="pickup" placeholder="Search pickup address or place" autocomplete="off" required><input type="hidden" id="pickup-place-id" name="pickupPlaceId"><input type="hidden" id="pickup-lat" name="pickupLatitude"><input type="hidden" id="pickup-lng" name="pickupLongitude"></div>
+        <div class="field full"><label for="dropoff">To / Drop-off location <span class="req">*</span></label><input id="dropoff" name="dropoff" placeholder="Search destination address or place" autocomplete="off" required><input type="hidden" id="dropoff-place-id" name="dropoffPlaceId"><input type="hidden" id="dropoff-lat" name="dropoffLatitude"><input type="hidden" id="dropoff-lng" name="dropoffLongitude"><p class="hint" id="maps-hint">Google Maps suggestions will appear here once the Maps API key is configured. You can also type the address manually.</p></div>
+        <div class="field"><label for="pickup-date">Date <span class="req">*</span></label><input id="pickup-date" name="pickupDate" type="date" required></div>
+        <div class="field"><label for="pickup-time">Time <span class="req">*</span></label><input id="pickup-time" name="pickupTime" type="time" required></div>
       </div>
-      <div class="notice" id="form-notice" role="status" aria-live="polite"></div>
-    </form>
+    </section>
 
-    <footer>© <span id="year"></span> Royal Limo Service<br>Luxury Chauffeur &amp; Limousine Services · Atlanta, Georgia</footer>
-  </main>
+    <section class="section">
+      <h2 class="section-title"><span class="num">2</span> Select your vehicle</h2>
+      <div class="vehicle-grid">
+        <div class="vehicle"><input id="car-sedan" type="radio" name="vehicleType" value="Executive Sedan" data-capacity="3" required><label for="car-sedan"><img src="https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&amp;fit=crop&amp;w=640&amp;q=80" alt="Executive sedan"><div class="vehicle-info"><div class="vehicle-name">Executive Sedan</div><div class="capacity">Maximum 3 passengers</div><div class="selected-tag">✓ Selected</div></div></label></div>
+        <div class="vehicle"><input id="car-suv" type="radio" name="vehicleType" value="Luxury SUV" data-capacity="6"><label for="car-suv"><img src="https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&amp;fit=crop&amp;w=640&amp;q=80" alt="Luxury SUV"><div class="vehicle-info"><div class="vehicle-name">Luxury SUV</div><div class="capacity">Maximum 6 passengers</div><div class="selected-tag">✓ Selected</div></div></label></div>
+        <div class="vehicle"><input id="car-limo" type="radio" name="vehicleType" value="Stretch Limousine" data-capacity="8"><label for="car-limo"><img src="https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&amp;fit=crop&amp;w=640&amp;q=80" alt="Luxury limousine"><div class="vehicle-info"><div class="vehicle-name">Stretch Limousine</div><div class="capacity">Maximum 8 passengers</div><div class="selected-tag">✓ Selected</div></div></label></div>
+        <div class="vehicle"><input id="car-van" type="radio" name="vehicleType" value="Luxury Van" data-capacity="12"><label for="car-van"><img src="https://images.unsplash.com/photo-1511919884226-fd3cad34687c?auto=format&amp;fit=crop&amp;w=640&amp;q=80" alt="Luxury passenger vehicle"><div class="vehicle-info"><div class="vehicle-name">Luxury Van</div><div class="capacity">Maximum 12 passengers</div><div class="selected-tag">✓ Selected</div></div></label></div>
+      </div>
+      <p class="hint">Passenger capacities are initial hard-coded values and can be adjusted to match your actual fleet.</p>
+    </section>
 
-  <script>
-    /*
-      Google Maps setup:
-      1. Create/choose a Google Cloud project and enable Maps JavaScript API and Places API.
-      2. Create a browser-restricted API key and add your website domain as an HTTP referrer.
-      3. Paste the key below. Keep API restrictions enabled.
-    */
-    const GOOGLE_MAPS_API_KEY = "";
-    const BOOKING_API_ENDPOINT = "/api/bookings";
+    <section class="section">
+      <h2 class="section-title"><span class="num">3</span> Passengers &amp; preferences</h2>
+      <div class="count-grid">
+        <div class="field"><label for="passengers">Passenger count <span class="req">*</span></label><input id="passengers" name="passengerCount" type="number" min="1" max="12" value="1" required></div>
+        <div class="field"><label for="kids">Children</label><input id="kids" name="kidsCount" type="number" min="0" max="12" value="0"></div>
+        <div class="field"><label for="baggage">Baggage count</label><input id="baggage" name="baggageCount" type="number" min="0" max="30" value="0"></div>
+      </div>
+      <div class="field" style="margin-top:14px"><label for="preferences">Preference, if any</label><textarea id="preferences" name="preferences" placeholder="Child seat, luggage notes, preferred route, additional stop or other requests..." maxlength="1500"></textarea></div>
+    </section>
 
-    const form = document.getElementById("booking-form");
-    const submitButton = document.getElementById("submit-button");
-    const notice = document.getElementById("form-notice");
-    const mapsHint = document.getElementById("maps-hint");
+    <section class="section">
+      <h2 class="section-title"><span class="num">4</span> Client details</h2>
+      <div class="grid">
+        <div class="field"><label for="client-name">Name <span class="req">*</span></label><input id="client-name" name="customerName" placeholder="Your full name" autocomplete="name" maxlength="120" required></div>
+        <div class="field"><label for="client-phone">Phone number <span class="req">*</span></label><input id="client-phone" name="phone" type="tel" placeholder="+1 (___) ___-____" autocomplete="tel" maxlength="30" required><p class="hint">We’ll use your phone number to identify or register your customer profile.</p></div>
+        <div class="field full"><label for="client-email">Email address <span style="color:var(--muted);font-weight:400">(optional)</span></label><input id="client-email" name="email" type="email" placeholder="you@example.com" autocomplete="email" maxlength="160"></div>
+      </div>
+    </section>
 
-    document.getElementById("year").textContent = new Date().getFullYear();
+    <div class="submit"><button id="book-button" type="submit">Book My Cab&nbsp; →</button><div class="submit-note">Submitting creates a booking request. Your ride is confirmed only after Royal Limo Service reviews and confirms it.</div></div>
+    <div class="notice" id="notice" role="status" aria-live="polite"></div>
+  </form>
+  <footer>© <span id="year"></span> Royal Limo Service · Luxury Chauffeur &amp; Limousine Services · Atlanta, Georgia</footer>
+</main>
+<script>
+/* Configure a browser-restricted Google Maps API key here after enabling Maps JavaScript API and Places API. */
+const GOOGLE_MAPS_API_KEY = "";
+const BOOKING_API_ENDPOINT = "/api/bookings";
+const form = document.getElementById("booking-form");
+const notice = document.getElementById("notice");
+const button = document.getElementById("book-button");
+const mapsHint = document.getElementById("maps-hint");
+document.getElementById("year").textContent = new Date().getFullYear();
 
-    // Use the visitor's local calendar date as the earliest selectable date.
-    const today = new Date();
-    const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60000)
-      .toISOString().slice(0, 10);
-    document.getElementById("travel-date").min = localToday;
+const now = new Date();
+const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0,10);
+document.getElementById("pickup-date").min = today;
 
-    function attachAutocomplete(inputId, prefix) {
-      const input = document.getElementById(inputId);
-      const autocomplete = new google.maps.places.Autocomplete(input, {
-        fields: ["place_id", "formatted_address", "geometry", "name"],
-        types: ["geocode"]
-      });
+function setupPlace(inputId, prefix) {
+  const input = document.getElementById(inputId);
+  const autocomplete = new google.maps.places.Autocomplete(input, {
+    fields: ["place_id","formatted_address","geometry"], types: ["geocode"]
+  });
+  autocomplete.addListener("place_changed", () => {
+    const place = autocomplete.getPlace();
+    const loc = place.geometry && place.geometry.location;
+    document.getElementById(prefix+"-place-id").value = place.place_id || "";
+    document.getElementById(prefix+"-lat").value = loc ? loc.lat() : "";
+    document.getElementById(prefix+"-lng").value = loc ? loc.lng() : "";
+    if (place.formatted_address) input.value = place.formatted_address;
+  });
+  input.addEventListener("input", () => {
+    ["place-id","lat","lng"].forEach(suffix => document.getElementById(prefix+"-"+suffix).value = "");
+  });
+}
+window.initRoyalLimoMaps = () => {
+  setupPlace("pickup","pickup");
+  setupPlace("dropoff","dropoff");
+  mapsHint.textContent = "Select a suggested result so we can capture its map location.";
+};
+if (GOOGLE_MAPS_API_KEY) {
+  const script = document.createElement("script");
+  script.src = "https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(GOOGLE_MAPS_API_KEY)+"&libraries=places&callback=initRoyalLimoMaps";
+  script.async = true; script.defer = true;
+  script.onerror = () => mapsHint.textContent = "Google Maps could not load. You can still enter addresses manually.";
+  document.head.appendChild(script);
+}
 
-      autocomplete.addListener("place_changed", () => {
-        const place = autocomplete.getPlace();
-        document.getElementById(prefix + "-place-id").value = place.place_id || "";
-        const location = place.geometry && place.geometry.location;
-        document.getElementById(prefix + "-lat").value = location ? location.lat() : "";
-        document.getElementById(prefix + "-lng").value = location ? location.lng() : "";
-        if (place.formatted_address) input.value = place.formatted_address;
-      });
+const vehicleInputs = [...document.querySelectorAll('input[name="vehicleType"]')];
+const passengerInput = document.getElementById("passengers");
+function updatePassengerLimit() {
+  const selected = vehicleInputs.find(input => input.checked);
+  const limit = selected ? Number(selected.dataset.capacity) : 12;
+  passengerInput.max = String(limit);
+  if (Number(passengerInput.value) > limit) passengerInput.value = String(limit);
+  passengerInput.setCustomValidity(Number(passengerInput.value) > limit ? "This vehicle supports up to "+limit+" passengers." : "");
+}
+vehicleInputs.forEach(input => input.addEventListener("change", updatePassengerLimit));
+passengerInput.addEventListener("input", updatePassengerLimit);
 
-      // If the customer edits a selected suggestion, discard its old coordinates.
-      input.addEventListener("input", () => {
-        document.getElementById(prefix + "-place-id").value = "";
-        document.getElementById(prefix + "-lat").value = "";
-        document.getElementById(prefix + "-lng").value = "";
-      });
-    }
-
-    window.initRoyalLimoMaps = function () {
-      attachAutocomplete("pickup", "pickup");
-      attachAutocomplete("dropoff", "dropoff");
-      mapsHint.textContent = "Choose a suggested address to attach its verified map location to your request.";
-    };
-
-    if (GOOGLE_MAPS_API_KEY) {
-      const mapsScript = document.createElement("script");
-      mapsScript.src = "https://maps.googleapis.com/maps/api/js?key=" +
-        encodeURIComponent(GOOGLE_MAPS_API_KEY) +
-        "&libraries=places&callback=initRoyalLimoMaps";
-      mapsScript.async = true;
-      mapsScript.defer = true;
-      mapsScript.onerror = () => {
-        mapsHint.textContent = "Map suggestions could not load. You can still enter the addresses manually.";
-      };
-      document.head.appendChild(mapsScript);
-    }
-
-    function showNotice(type, heading, message, reference) {
-      notice.className = "notice " + type;
-      notice.replaceChildren();
-      const title = document.createElement("strong");
-      title.textContent = heading;
-      const detail = document.createElement("span");
-      detail.textContent = message;
-      notice.append(title, detail);
-      if (reference) {
-        const ref = document.createElement("div");
-        ref.style.marginTop = "7px";
-        ref.textContent = "Booking reference: " + reference;
-        notice.appendChild(ref);
-      }
-    }
-
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      if (!form.reportValidity()) return;
-
-      const data = Object.fromEntries(new FormData(form).entries());
-      data.passengers = Number(data.passengers);
-      data.submittedAt = new Date().toISOString();
-      data.status = "PENDING_REVIEW";
-
-      submitButton.disabled = true;
-      submitButton.textContent = "Submitting…";
-      notice.className = "notice";
-      notice.textContent = "";
-
-      try {
-        const response = await fetch(BOOKING_API_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Accept": "application/json" },
-          body: JSON.stringify(data)
-        });
-        const result = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-          throw new Error(result.message || "We could not submit your request. Please try again or contact us.");
-        }
-
-        showNotice(
-          "success",
-          "Your request has been received.",
-          "Our team will review your journey and contact you to confirm the booking.",
-          result.bookingReference || result.bookingId || ""
-        );
-        form.reset();
-        document.getElementById("travel-date").min = localToday;
-      } catch (error) {
-        showNotice(
-          "error",
-          "Booking submission is not connected yet.",
-          error.message + " The booking API must be deployed before this form can save requests."
-        );
-      } finally {
-        submitButton.disabled = false;
-        submitButton.textContent = "Submit booking request  →";
-      }
+function showNotice(type, title, message, bookingId) {
+  notice.className = "notice "+type;
+  notice.replaceChildren();
+  const strong = document.createElement("strong"); strong.textContent = title;
+  const text = document.createElement("div"); text.textContent = message;
+  notice.append(strong,text);
+  if (bookingId) {
+    const ref = document.createElement("div"); ref.className = "booking-ref"; ref.textContent = bookingId; notice.append(ref);
+  }
+}
+form.addEventListener("submit", async event => {
+  event.preventDefault();
+  updatePassengerLimit();
+  if (!form.reportValidity()) return;
+  const payload = Object.fromEntries(new FormData(form).entries());
+  payload.passengerCount = Number(payload.passengerCount);
+  payload.kidsCount = Number(payload.kidsCount || 0);
+  payload.baggageCount = Number(payload.baggageCount || 0);
+  payload.status = "PENDING_REVIEW";
+  payload.submittedAt = new Date().toISOString();
+  button.disabled = true; button.textContent = "Submitting…";
+  notice.className = "notice"; notice.textContent = "";
+  try {
+    const response = await fetch(BOOKING_API_ENDPOINT, {
+      method:"POST", headers:{"Content-Type":"application/json","Accept":"application/json"},
+      body:JSON.stringify(payload)
     });
-  </script>
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || "We could not submit your booking. Please try again.");
+    showNotice("success","Your booking request has been registered.","Our team will contact you to confirm the ride.",result.bookingId || result.bookingReference);
+    form.reset();
+    document.getElementById("pickup-date").min = today;
+    updatePassengerLimit();
+  } catch (error) {
+    showNotice("error","Booking service is not connected yet.",error.message+" The booking API must be deployed to register customers and save booking IDs.");
+  } finally {
+    button.disabled = false; button.textContent = "Book My Cab  →";
+  }
+});
+</script>
 </body>
 </html>

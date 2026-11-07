@@ -36,19 +36,31 @@ textarea{min-height:82px;resize:vertical;line-height:1.5}.hint{margin:6px 0 0;co
 .notice{display:none;margin-top:15px;padding:14px;border:1px solid var(--line);border-radius:10px;font-size:13px;line-height:1.6;overflow-wrap:anywhere}.notice.success{display:block;border-color:#75c99a88;background:#75c99a12;color:#c1f0d2}.notice.error{display:block;border-color:#ff858588;background:#ff858512;color:#ffc4c4}.notice strong{display:block;margin-bottom:4px}.booking-ref{margin-top:7px;font:700 16px ui-monospace,monospace;letter-spacing:.04em;color:inherit}
 footer{padding:18px 0 0;text-align:center;color:#777;font-size:10px;line-height:1.7}
 @media(max-width:600px){
-  .shell{width:min(100% - 22px,520px);padding:12px 0 calc(26px + env(safe-area-inset-bottom))}
-  .top{padding-bottom:12px}.brand{gap:8px}.brand-mark{width:36px;height:36px;flex-basis:36px;font-size:21px}.brand-name{font-size:16px}.brand-tag{font-size:8px;letter-spacing:.1em}.back{min-height:42px;font-size:12px}
-  .heading{padding:19px 2px 15px}h1{font-size:34px}.lead{font-size:13px}
-  .card{padding:16px 13px;border-radius:15px}.section{padding-bottom:18px}.section+.section{padding-top:17px}.section-title{margin-bottom:12px;font-size:14px}
-  .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field.full{grid-column:1/-1}
-  .vehicle-grid{gap:9px}.vehicle-info{padding:9px}.vehicle-name{font-size:12px}.capacity{font-size:10px}
-  .count-grid{gap:8px}.count-grid label{min-height:28px;margin-bottom:5px;line-height:1.3}
-  .submit{align-items:stretch;flex-direction:column;gap:9px;padding-top:16px}.submit button{width:100%;min-height:56px;font-size:16px}.submit-note{text-align:center;font-size:10px}
-  footer{padding-bottom:5px}
+  html{scroll-behavior:smooth}
+  body{background:linear-gradient(180deg,rgba(217,39,53,.12),transparent 220px),var(--bg)}
+  .shell{width:calc(100% - 20px);max-width:520px;padding-top:10px;padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+  .top{position:sticky;top:0;z-index:20;margin:-10px -10px 0;padding:10px;border-bottom-color:rgba(255,255,255,.09);background:rgba(9,9,9,.94);backdrop-filter:blur(14px)}
+  .brand{gap:7px}.brand-mark{width:34px;height:34px;flex-basis:34px;font-size:20px}.brand-name{font-size:15px}.brand-tag{display:none}.back{min-height:44px;padding:0 4px 0 10px;font-size:12px}
+  .heading{padding:19px 1px 14px}h1{margin:6px 0;font-size:clamp(30px,9vw,36px)}.lead{max-width:36rem;font-size:12px;line-height:1.55}
+  .card{padding:15px 12px;border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.32)}
+  .section{padding-bottom:17px}.section+.section{padding-top:16px}.section-title{margin-bottom:13px;font-size:14px}.num{width:28px;height:28px;flex-basis:28px}
+  .grid{grid-template-columns:1fr;gap:12px}.field.full{grid-column:auto}
+  label{margin-bottom:6px;font-size:12px}
+  input,select,textarea{min-height:52px;border-radius:11px;font-size:16px}textarea{min-height:92px}
+  input[type="date"],input[type="time"]{min-height:52px;width:100%;max-width:100%}
+  .vehicle-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.vehicle label{border-radius:11px}.vehicle img{aspect-ratio:4/3}.vehicle-info{padding:9px 9px 10px}.vehicle-name{min-height:32px;font-size:12px;line-height:1.35}.capacity{font-size:10px}.selected-tag{font-size:9px}
+  .count-grid{grid-template-columns:1fr;gap:10px}.count-grid .field{display:grid;grid-template-columns:minmax(0,1fr) 110px;align-items:center;gap:10px}.count-grid label{margin:0;min-height:0;font-size:12px;line-height:1.35}.count-grid input{text-align:center}
+  .submit{position:sticky;bottom:0;z-index:10;margin:16px -12px -15px;padding:12px 12px calc(12px + env(safe-area-inset-bottom));border:1px solid rgba(255,255,255,.08);border-width:1px 0 0;background:rgba(21,21,21,.97);backdrop-filter:blur(12px)}
+  .submit button{width:100%;min-height:56px;padding:0 20px;font-size:16px}.submit-note{max-width:420px;margin:auto;text-align:center;line-height:1.45}
+  .notice{margin-top:12px;padding:13px}.booking-ref{font-size:15px}
+  footer{padding:16px 5px 2px;font-size:9px}
 }
 @media(max-width:360px){
-  .shell{width:calc(100% - 16px)}.card{padding:14px 10px}.grid{gap:10px}.vehicle-grid{gap:7px}.vehicle-info{padding:8px}.vehicle-name{font-size:11px}.capacity{font-size:9px}.count-grid{gap:6px}.count-grid label{font-size:10px}
-  input,select,textarea{padding-left:10px;padding-right:10px}.back{font-size:11px}
+  .shell{width:calc(100% - 14px)}
+  .top{margin-right:-7px;margin-left:-7px;padding-right:7px;padding-left:7px}.brand-name{font-size:14px}.back{font-size:11px}
+  .card{padding-right:10px;padding-left:10px}.heading{padding-right:0;padding-left:0}
+  .vehicle-grid{grid-template-columns:1fr}.vehicle label{display:grid;grid-template-columns:112px minmax(0,1fr);align-items:center}.vehicle img{height:100%;min-height:92px;aspect-ratio:auto;border-radius:10px 0 0 10px}.vehicle-info{padding:10px}.vehicle-name{min-height:0;font-size:13px}
+  .count-grid .field{grid-template-columns:minmax(0,1fr) 96px}.submit{margin-right:-10px;margin-left:-10px}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{transition:none!important}}
 </style>
@@ -109,7 +121,7 @@ footer{padding:18px 0 0;text-align:center;color:#777;font-size:10px;line-height:
 </main>
 <script>
 /* Configure a browser-restricted Google Maps API key here after enabling Maps JavaScript API and Places API. */
-const GOOGLE_MAPS_API_KEY = "";
+const GOOGLE_MAPS_API_KEY = "AIzaSyBbzlEGF-ERod0tpPR5cUhN0lN1lif23ZY";
 const BOOKING_API_ENDPOINT = "/api/bookings";
 const form = document.getElementById("booking-form");
 const notice = document.getElementById("notice");

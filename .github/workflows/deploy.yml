@@ -1,0 +1,16 @@
+name: Combined deployment (disabled)
+
+on:
+  workflow_dispatch:
+
+# This workflow is intentionally not triggered by pushes.
+# Frontend and API deployments are separate workflows under:
+# - .github/workflows/frontend.yml
+# - .github/workflows/api.yml
+
+jobs:
+  disabled:
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Use frontend.yml or api.yml for deployment"

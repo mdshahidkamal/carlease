@@ -34,6 +34,7 @@ if (app.Environment.IsDevelopment())
 app.UseCors(frontendPolicy);
 app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
+app.MapGet("/checkconnectionstring", CarLease.Api.Endpoints.DatabaseConnectionEndpoint.Check);
 app.MapControllers();
 
 app.Run();

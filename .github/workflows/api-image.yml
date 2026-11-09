@@ -1,0 +1,89 @@
+name: Backend API - Build and publish image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "ecs-task-definition.json"
+      - ".github/workflows/api-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: backend-image-main
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'us-east-1' }}
+  ECR_REPOSITORY: carlease-api
+
+jobs:
+  build-test-publish:
+    name: Build, test and publish immutable image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+          cache: true
+          cache-dependency-path: |
+            backend/CarLease.Api.csproj
+            tests/CarLease.Api.Tests/CarLease.Api.Tests.csproj
+
+      - name: Restore solution
+        run: dotnet restore backend/CarLease.Api.sln
+
+      - name: Build solution
+        run: dotnet build backend/CarLease.Api.sln --configuration Release --no-restore
+
+      - name: Run unit tests
+        run: dotnet test backend/CarLease.Api.sln --configuration Release --no-build
+
+      - name: Validate AWS deployment configuration
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+        run: |
+          test -n "$AWS_ROLE_ARN" || { echo "::error::Missing AWS_ROLE_ARN"; exit 1; }
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push API image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker build --pull --tag "$IMAGE_URI" ./backend
+          docker push "$IMAGE_URI"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+          echo "Published $IMAGE_URI"
+
+      - name: Record image metadata
+        run: |
+          printf '%s\n' "$IMAGE_URI" > api-image-uri.txt
+          printf '%s\n' "${{ github.sha }}" > api-image-sha.txt
+
+      - name: Upload image metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-image-metadata
+          path: |
+            api-image-uri.txt
+            api-image-sha.txt
+          retention-days: 30

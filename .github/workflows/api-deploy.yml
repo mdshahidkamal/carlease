@@ -1,0 +1,115 @@
+name: Backend API - Deploy to ECS
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Full Git commit SHA used as the ECR image tag"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: backend-api-production-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'us-east-1' }}
+  ECR_REPOSITORY: carlease-api
+
+jobs:
+  deploy:
+    name: Deploy selected image to ECS
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Validate deployment inputs and configuration
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
+          ECS_SERVICE: ${{ secrets.ECS_SERVICE }}
+          ECS_EXECUTION_ROLE_ARN: ${{ secrets.ECS_EXECUTION_ROLE_ARN }}
+          ECS_TASK_ROLE_ARN: ${{ secrets.ECS_TASK_ROLE_ARN }}
+          DATABASE_SECRET_ARN: ${{ secrets.DATABASE_SECRET_ARN }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+        run: |
+          [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::image_tag must be a full 40-character Git commit SHA"; exit 1; }
+          for name in AWS_ROLE_ARN ECS_CLUSTER ECS_SERVICE ECS_EXECUTION_ROLE_ARN ECS_TASK_ROLE_ARN DATABASE_SECRET_ARN FRONTEND_URL; do
+            if [ -z "${!name}" ]; then echo "::error::Missing required secret: $name"; exit 1; fi
+          done
+
+      - name: Checkout deployment configuration
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve ECR image URI
+        id: image
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          IMAGE_URI="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
+          aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" >/dev/null
+          echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Generate ECS task definition
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          ECS_EXECUTION_ROLE_ARN: ${{ secrets.ECS_EXECUTION_ROLE_ARN }}
+          ECS_TASK_ROLE_ARN: ${{ secrets.ECS_TASK_ROLE_ARN }}
+          DATABASE_SECRET_ARN: ${{ secrets.DATABASE_SECRET_ARN }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          with open("ecs-task-definition.json", encoding="utf-8") as source:
+              task = json.load(source)
+
+          task["executionRoleArn"] = os.environ["ECS_EXECUTION_ROLE_ARN"]
+          task["taskRoleArn"] = os.environ["ECS_TASK_ROLE_ARN"]
+
+          containers = task.get("containerDefinitions", [])
+          if len(containers) != 1:
+              raise SystemExit("Expected exactly one API container in task definition")
+
+          container = containers[0]
+          container["image"] = os.environ["IMAGE_URI"]
+
+          secrets = container.setdefault("secrets", [])
+          database_secret = next(
+              (item for item in secrets if item.get("name") == "ConnectionStrings__DefaultConnection"),
+              None
+          )
+          if database_secret is None:
+              raise SystemExit("Database connection secret mapping is missing")
+          database_secret["valueFrom"] = os.environ["DATABASE_SECRET_ARN"]
+
+          log_options = container.get("logConfiguration", {}).get("options", {})
+          log_options["awslogs-region"] = os.environ["AWS_REGION"]
+
+          for item in container.get("environment", []):
+              if item.get("name") == "FrontendUrl":
+                  item["value"] = os.environ["FRONTEND_URL"]
+
+          with open("ecs-task-definition.generated.json", "w", encoding="utf-8") as target:
+              json.dump(task, target, indent=2)
+          PY
+
+      - name: Deploy to Amazon ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ecs-task-definition.generated.json
+          service: ${{ secrets.ECS_SERVICE }}
+          cluster: ${{ secrets.ECS_CLUSTER }}
+          wait-for-service-stability: true

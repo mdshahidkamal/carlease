@@ -32,7 +32,8 @@ Do not deploy from feature branches or pull-request workflows.
 
 Keep the existing AWS secrets:
 
-- `AWS_ROLE_ARN`: IAM role trusted by GitHub OIDC
+- `AWS_PUBLISH_ROLE_ARN`: least-privilege IAM role for the main-branch ECR publisher workflow
+- `AWS_ROLE_ARN`: IAM role trusted by GitHub OIDC for the production deployment workflow
 - `AWS_REGION`: AWS region (may be a repository variable instead)
 - `ECS_CLUSTER`: ECS cluster
 - `ECS_SERVICE`: ECS service
@@ -63,7 +64,7 @@ The IAM role trust policy should constrain the subject to this repository and th
 }
 ```
 
-This environment-scoped trust applies to the manual deploy workflow. The image-publishing workflow uses a branch-scoped subject for `main`; either create a separate least-privilege IAM role for publishing or deliberately extend the trust policy to include `repo:mdshahidkamal/carlease:ref:refs/heads/main`.
+Create a separate IAM role for ECR publishing and store its ARN as `AWS_PUBLISH_ROLE_ARN`. Its trust policy should use the `repo:mdshahidkamal/carlease:ref:refs/heads/main` subject. The production deployment role referenced by `AWS_ROLE_ARN` should use the `production` environment subject above. Grant the publisher only ECR authentication and image push permissions; grant the deployer only the ECR image read, ECS task registration and ECS service update permissions it needs.
 
 Do not give the CI test workflow AWS permissions.
 

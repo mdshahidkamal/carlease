@@ -109,8 +109,8 @@ jobs:
           IMAGE_URI: ${{ steps.image.outputs.uri }}
           IMAGE_TAG: ${{ steps.image.outputs.tag }}
         run: |
-          printf '%s\\n' "$IMAGE_URI" > api-image-uri.txt
-          printf '%s\\n' "$IMAGE_TAG" > api-image-sha.txt
+          echo "$IMAGE_URI" > api-image-uri.txt
+          echo "$IMAGE_TAG" > api-image-sha.txt
 
       - name: Upload image metadata
         uses: actions/upload-artifact@v4

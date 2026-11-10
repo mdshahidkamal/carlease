@@ -48,6 +48,8 @@ Create GitHub Environments named `nonprod` and `production`.
 
 ### Nonprod environment
 
+Set the environment variable `NONPROD_DEPLOY_ENABLED` to `true` only after the nonprod ECS service, database secret, OIDC deploy role and frontend URL are ready. Keep it unset or `false` during initial setup. This lets the first merge publish the immutable ECR image without attempting a deployment. Once the service is ready, manually run the image workflow on `main`; the immutable SHA check will reuse the already-published image. After that, future pushes to `main` deploy nonprod automatically.
+
 Secrets:
 - `AWS_NONPROD_ROLE_ARN`: GitHub OIDC role allowed to deploy the nonprod ECS service.
 - `DATABASE_SECRET_ARN`: ARN of the nonprod PostgreSQL connection-string secret in AWS Secrets Manager.

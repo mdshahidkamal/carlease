@@ -1,110 +1,127 @@
 # CarLease backend CI/CD - GitHub Flow
 
-## Scope
+## Deployment policy
 
-This document describes CI, image publishing and ECS deployment for the ASP.NET Core API under `backend/`.
-
-The repository's frontend workflow is unchanged. PostgreSQL schema migrations remain a separately controlled activity; this pipeline does not execute `dotnet ef database update`.
+- Feature branches and pull requests: CI only (restore, build, unit tests, Docker build validation).
+- Merge to `main`: build and test the API, build one Docker image, tag it with the full 40-character commit SHA, push it to ECR, and automatically deploy that same image to nonprod.
+- Production: manual workflow dispatch using an image SHA that already exists in ECR. The production GitHub Environment can require reviewer approval.
+- The production workflow never rebuilds the image. It promotes the previously published SHA.
+- Database schema migrations remain a separately reviewed and controlled operation. These workflows do not run EF Core migrations.
+- The frontend workflow is intentionally unchanged.
 
 ## Workflows
 
 | Workflow | Trigger | Responsibility |
 |---|---|---|
-| `.github/workflows/api-ci.yml` | Push to feature/bugfix/hotfix branches and pull requests into main | Restore, build, run xUnit tests and validate Docker build |
-| `.github/workflows/api-image.yml` | Push to main when API or ECS task configuration changes | Re-run CI gates, build Docker image, push SHA-tagged image to ECR |
-| `.github/workflows/api-deploy.yml` | Manual workflow dispatch | Deploy a previously published image SHA to ECS Fargate |
+| `.github/workflows/api-ci.yml` | Feature/bugfix/hotfix push, PR to main, manual CI run | Restore, build, xUnit tests and Docker build validation; no AWS credentials |
+| `.github/workflows/api-image.yml` | Push to main, or manual run on main | Build/test, publish immutable SHA image to ECR, then deploy that same image to nonprod |
+| `.github/workflows/api-deploy.yml` | Manual workflow dispatch | Promote a selected, previously published SHA to production |
+
+The old `.github/workflows/api.yml` is removed because it independently built and deployed the API on main and would create a competing deployment path.
+
+## AWS resources
+
+- Region: `ap-southeast-2`
+- Account: `996661624843`
+- ECR repository: `carlease-api`
+- ECS cluster: `carlease-cluster`
+- Nonprod ECS service: `carlease-api-nonprod`
+- Production ECS service: `carlease-api-prod`
+- Task execution role: `arn:aws:iam::996661624843:role/carlease/carlease-ecs-task-execution-role`
+- Application task role: `arn:aws:iam::996661624843:role/carlease/carlease-api-task-role`
+
+Task definitions are separate:
+- `ecs/task-definition-nonprod.json`
+- `ecs/task-definition-production.json`
+
+Both use Fargate `awsvpc`, Linux X86_64, container port 8080, and the existing environment-specific CloudWatch log groups. The initial task size is 0.25 vCPU and 512 MiB; adjust after observing actual memory/CPU utilization.
+
+## GitHub configuration
+
+Create GitHub Environments named `nonprod` and `production`.
+
+### Repository Actions secret
+
+| Name | Purpose |
+|---|---|
+| `AWS_PUBLISH_ROLE_ARN` | IAM OIDC role used only by the main-branch image publishing job |
+
+### Nonprod environment
+
+Secrets:
+- `AWS_NONPROD_ROLE_ARN`: GitHub OIDC role allowed to deploy the nonprod ECS service.
+- `DATABASE_SECRET_ARN`: ARN of the nonprod PostgreSQL connection-string secret in AWS Secrets Manager.
+
+Variable:
+- `FRONTEND_URL`: exact frontend origin allowed by the API CORS policy.
+
+### Production environment
+
+Secrets:
+- `AWS_PRODUCTION_ROLE_ARN`: GitHub OIDC role allowed to deploy the production ECS service.
+- `DATABASE_SECRET_ARN`: ARN of the production PostgreSQL connection-string secret in AWS Secrets Manager.
+
+Variable:
+- `FRONTEND_URL`: exact production frontend origin allowed by the API CORS policy.
+
+Do not store plaintext AWS credentials or database connection strings in GitHub. The database value belongs in Secrets Manager; GitHub stores only its ARN. The ECS execution role must be granted `secretsmanager:GetSecretValue` for the two approved database secret ARNs (and `kms:Decrypt` if a customer-managed KMS key is used).
+
+## GitHub OIDC trust subjects
+
+Create three separate IAM roles:
+
+1. ECR publisher role. Trust subject:
+   `repo:mdshahidkamal/carlease:ref:refs/heads/main`
+2. Nonprod deploy role. Trust subject:
+   `repo:mdshahidkamal/carlease:environment:nonprod`
+3. Production deploy role. Trust subject:
+   `repo:mdshahidkamal/carlease:environment:production`
+
+All trust policies should also require audience `sts.amazonaws.com` and constrain `aws:SourceAccount` where applicable.
+
+Permissions:
+- Publisher: ECR authorization and image push actions only, scoped to repository `carlease-api`.
+- Nonprod deployer: ECR image describe/read as needed, ECS task definition registration and update/describe for `carlease-api-nonprod`, and `iam:PassRole` only for the two CarLease ECS task roles.
+- Production deployer: equivalent ECS permissions scoped to `carlease-api-prod`, plus ECR image verification/read and narrowly scoped `iam:PassRole`.
+- ECS task execution role: ECR image pull, CloudWatch Logs write, and read access to the nonprod and production Secrets Manager connection-string secrets.
+- Application task role: no AWS permissions until the application actually requires AWS APIs.
+
+## First deployment prerequisites
+
+Before merging this PR or triggering a deployment:
+
+1. Create and validate the nonprod and production logical PostgreSQL databases and their separate Secrets Manager connection-string secrets. Do not point both environments at the same logical database.
+2. Attach narrowly scoped Secrets Manager read permissions to the ECS execution role.
+3. Create the three GitHub OIDC IAM roles and add the corresponding GitHub secret values.
+4. Create the GitHub Environments `nonprod` and `production`; set their secrets and `FRONTEND_URL` variables. Add required reviewers to production.
+5. Create both ECS Fargate services in `carlease-cluster`, attached to their existing target groups, using the public subnets with public IP assignment enabled (the current VPC has no NAT gateway or private-subnet egress path). The task security group must continue to accept port 8080 only from the ALB security group.
+6. Ensure the ALB path rules strip `/nonprod` and `/prod` before forwarding. The API exposes `/health`, so the existing target-group health check must continue to work with the configured URL rewrite.
+7. Validate CI on this PR. Only merge after OIDC roles, secrets, services and workflow checks are ready.
 
 ## GitHub Flow
 
-1. Create a short-lived branch from `main`, e.g. `feature/booking-page`.
-2. Push commits. Backend CI runs for feature branches.
-3. Open a pull request targeting `main`. CI runs again against the PR merge candidate.
-4. Require CI checks and code review before merging.
-5. Merging to `main` publishes a Docker image tagged with the full commit SHA.
-6. Deploy the selected image using the manual `Backend API - Deploy to ECS` workflow.
-7. Verify ECS service stability and the application `/health` endpoint.
+1. Create a short-lived feature branch from `main`.
+2. Push code; CI runs on the feature branch.
+3. Open a pull request to `main`; CI runs against the PR.
+4. Require the backend CI check and code review before merge.
+5. Merge to `main`; GitHub Actions builds and publishes `carlease-api:<full-commit-sha>`, then deploys that exact URI to nonprod.
+6. After nonprod verification, manually run `Backend API - Promote image to production` with the same 40-character SHA. GitHub's production Environment review gate applies before deployment.
 
-Do not deploy from feature branches or pull-request workflows.
+## Database change controls
 
-## GitHub repository configuration
-
-### Actions secrets
-
-Keep the existing AWS secrets:
-
-- `AWS_PUBLISH_ROLE_ARN`: least-privilege IAM role for the main-branch ECR publisher workflow
-- `AWS_ROLE_ARN`: IAM role trusted by GitHub OIDC for the production deployment workflow
-- `AWS_REGION`: AWS region (may be a repository variable instead)
-- `ECS_CLUSTER`: ECS cluster
-- `ECS_SERVICE`: ECS service
-- `ECS_EXECUTION_ROLE_ARN`: task execution role
-- `ECS_TASK_ROLE_ARN`: application task role
-- `DATABASE_SECRET_ARN`: Secrets Manager ARN with the PostgreSQL connection string
-- `FRONTEND_URL`: allowed frontend origin
-
-The deploy workflow uses GitHub Environment `production`. Create this environment under Settings -> Environments and configure required reviewers if production approval is desired.
-
-### OIDC trust
-
-The IAM role trust policy should constrain the subject to this repository and the production deployment environment, for example:
-
-```json
-{
-  "Effect": "Allow",
-  "Principal": {
-    "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
-  },
-  "Action": "sts:AssumeRoleWithWebIdentity",
-  "Condition": {
-    "StringEquals": {
-      "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-      "token.actions.githubusercontent.com:sub": "repo:mdshahidkamal/carlease:environment:production"
-    }
-  }
-}
-```
-
-Create a separate IAM role for ECR publishing and store its ARN as `AWS_PUBLISH_ROLE_ARN`. Its trust policy should use the `repo:mdshahidkamal/carlease:ref:refs/heads/main` subject. The production deployment role referenced by `AWS_ROLE_ARN` should use the `production` environment subject above. Grant the publisher only ECR authentication and image push permissions; grant the deployer only the ECR image read, ECS task registration and ECS service update permissions it needs.
-
-Do not give the CI test workflow AWS permissions.
-
-### Branch protection / ruleset for main
-
-Configure a ruleset or branch protection for `main`:
-
-- Require a pull request before merging.
-- Require at least one approval (adjust for a solo-maintainer repository).
-- Require the backend CI check.
-- Require branches to be up to date where practical.
-- Block force pushes and branch deletion.
-- Do not allow direct pushes to `main`.
-
-Use the exact check name displayed by GitHub Actions after the first successful run.
-
-## Image and deployment flow
-
-Images are immutable by commit SHA:
-
-`<account>.dkr.ecr.<region>.amazonaws.com/carlease-api:<40-char-commit-sha>`
-
-The deploy workflow validates the SHA and confirms that the image exists in ECR before registering a task definition and updating ECS.
-
-For production, configure ECS service health checks through the load balancer using `/health`, and verify the target group uses the container's port 8080.
-
-## Database changes
-
-Schema migrations are not run by the API deployment workflow. Before a schema-changing release:
+The workflows do not run `dotnet ef database update`. For schema-changing releases:
 
 1. Generate and review an EF Core migration.
-2. Back up the database and test the migration against a representative environment.
-3. Apply it through an authorized migration process with the correct production connection secret.
-4. Deploy the API version compatible with the resulting schema.
+2. Back up the database and test against a representative environment.
+3. Apply the migration through an authorized process.
+4. Deploy an API version compatible with the resulting schema.
 
-Prefer backward-compatible expand/contract migrations to avoid downtime during rolling ECS deployments.
+Prefer backward-compatible expand/contract migrations for rolling ECS deployments.
 
-## Notes
+## Validation and limitations
 
-- The project currently targets .NET 8. Plan an upgrade to a supported LTS release.
-- The test project uses SQLite in-memory for its current database connectivity test; CI does not require RDS access.
-- The frontend workflow remains independent and is not modified here.
-- The existing API deployment workflow is retained temporarily for reference during this staged transition. Disable or remove it after validating the new image and deploy workflows, otherwise it remains an alternate production deployment path.
+- The repository targets .NET 8. GitHub Actions uses the .NET 8 SDK; local Docker Desktop is not required because image builds run on GitHub-hosted Ubuntu runners.
+- The API health endpoint is `/health` and the Dockerfile listens on port 8080.
+- Task definitions begin at 0.25 vCPU / 512 MiB; verify memory headroom during load tests.
+- The existing ALB is currently HTTP-only. HTTPS and a valid ACM certificate are required before production customer traffic.
+- This PR does not create AWS databases, Secrets Manager values, GitHub Environments, OIDC roles, ECS services, or deploy anything.

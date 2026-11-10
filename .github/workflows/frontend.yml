@@ -12,11 +12,6 @@ permissions:
   contents: read
   id-token: write
 
-# Configure AWS_REGION as a GitHub repository variable or secret. us-east-1 is
-# used only as the fallback so the workflow does not fail before deployment.
-env:
-  AWS_REGION: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'us-east-1' }}
-
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -24,11 +19,11 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -41,30 +36,11 @@ jobs:
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
 
-      - name: Validate AWS deployment configuration
-        env:
-          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-          FRONTEND_BUCKET: ${{ secrets.FRONTEND_BUCKET }}
-          CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
-        run: |
-          if [ -z "$AWS_ROLE_ARN" ]; then
-            echo "::error::Missing GitHub secret AWS_ROLE_ARN. Create an AWS IAM role trusted by GitHub OIDC and add its ARN."
-            exit 1
-          fi
-          if [ -z "$FRONTEND_BUCKET" ]; then
-            echo "::error::Missing GitHub secret FRONTEND_BUCKET."
-            exit 1
-          fi
-          if [ -z "$CLOUDFRONT_DISTRIBUTION_ID" ]; then
-            echo "::error::Missing GitHub secret CLOUDFRONT_DISTRIBUTION_ID."
-            exit 1
-          fi
-
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6.3.0
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Deploy frontend to S3
         working-directory: .

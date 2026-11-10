@@ -1,10 +1,10 @@
-name: Backend API - Deploy to ECS
+name: Backend API - Promote image to production
 
 on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Full Git commit SHA used as the ECR image tag"
+        description: "Full 40-character Git commit SHA of an image already published to ECR"
         required: true
         type: string
 
@@ -17,29 +17,29 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AWS_REGION: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'us-east-1' }}
+  AWS_REGION: ap-southeast-2
   ECR_REPOSITORY: carlease-api
+  ECS_CLUSTER: carlease-cluster
 
 jobs:
   deploy:
-    name: Deploy selected image to ECS
+    name: Promote selected image to production
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Validate deployment inputs and configuration
+      - name: Validate image and production configuration
         env:
           IMAGE_TAG: ${{ inputs.image_tag }}
-          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-          ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
-          ECS_SERVICE: ${{ secrets.ECS_SERVICE }}
-          ECS_EXECUTION_ROLE_ARN: ${{ secrets.ECS_EXECUTION_ROLE_ARN }}
-          ECS_TASK_ROLE_ARN: ${{ secrets.ECS_TASK_ROLE_ARN }}
+          AWS_PRODUCTION_ROLE_ARN: ${{ secrets.AWS_PRODUCTION_ROLE_ARN }}
           DATABASE_SECRET_ARN: ${{ secrets.DATABASE_SECRET_ARN }}
-          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
         run: |
           [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::image_tag must be a full 40-character Git commit SHA"; exit 1; }
-          for name in AWS_ROLE_ARN ECS_CLUSTER ECS_SERVICE ECS_EXECUTION_ROLE_ARN ECS_TASK_ROLE_ARN DATABASE_SECRET_ARN FRONTEND_URL; do
-            if [ -z "${!name}" ]; then echo "::error::Missing required secret: $name"; exit 1; fi
+          for name in AWS_PRODUCTION_ROLE_ARN DATABASE_SECRET_ARN FRONTEND_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing production environment secret/variable: $name"
+              exit 1
+            fi
           done
 
       - name: Checkout deployment configuration
@@ -48,10 +48,10 @@ jobs:
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_PRODUCTION_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Resolve ECR image URI
+      - name: Resolve and verify previously published ECR image
         id: image
         env:
           IMAGE_TAG: ${{ inputs.image_tag }}
@@ -61,55 +61,42 @@ jobs:
           aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" >/dev/null
           echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
 
-      - name: Generate ECS task definition
+      - name: Generate production task definition
         env:
           IMAGE_URI: ${{ steps.image.outputs.uri }}
-          ECS_EXECUTION_ROLE_ARN: ${{ secrets.ECS_EXECUTION_ROLE_ARN }}
-          ECS_TASK_ROLE_ARN: ${{ secrets.ECS_TASK_ROLE_ARN }}
           DATABASE_SECRET_ARN: ${{ secrets.DATABASE_SECRET_ARN }}
-          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
         run: |
           python3 - <<'PY'
           import json
           import os
 
-          with open("ecs-task-definition.json", encoding="utf-8") as source:
+          with open("ecs/task-definition-production.json", encoding="utf-8") as source:
               task = json.load(source)
 
-          task["executionRoleArn"] = os.environ["ECS_EXECUTION_ROLE_ARN"]
-          task["taskRoleArn"] = os.environ["ECS_TASK_ROLE_ARN"]
-
           containers = task.get("containerDefinitions", [])
-          if len(containers) != 1:
-              raise SystemExit("Expected exactly one API container in task definition")
+          if len(containers) != 1 or containers[0].get("name") != "carlease-api":
+              raise SystemExit("Unexpected production task definition container structure")
 
           container = containers[0]
           container["image"] = os.environ["IMAGE_URI"]
-
-          secrets = container.setdefault("secrets", [])
-          database_secret = next(
-              (item for item in secrets if item.get("name") == "ConnectionStrings__DefaultConnection"),
-              None
-          )
-          if database_secret is None:
-              raise SystemExit("Database connection secret mapping is missing")
-          database_secret["valueFrom"] = os.environ["DATABASE_SECRET_ARN"]
-
-          log_options = container.get("logConfiguration", {}).get("options", {})
-          log_options["awslogs-region"] = os.environ["AWS_REGION"]
+          container["secrets"] = [{
+              "name": "ConnectionStrings__DefaultConnection",
+              "valueFrom": os.environ["DATABASE_SECRET_ARN"]
+          }]
 
           for item in container.get("environment", []):
               if item.get("name") == "FrontendUrl":
                   item["value"] = os.environ["FRONTEND_URL"]
 
-          with open("ecs-task-definition.generated.json", "w", encoding="utf-8") as target:
+          with open("ecs/task-definition-production.generated.json", "w", encoding="utf-8") as target:
               json.dump(task, target, indent=2)
           PY
 
-      - name: Deploy to Amazon ECS
+      - name: Deploy production ECS service
         uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
-          task-definition: ecs-task-definition.generated.json
-          service: ${{ secrets.ECS_SERVICE }}
-          cluster: ${{ secrets.ECS_CLUSTER }}
+          task-definition: ecs/task-definition-production.generated.json
+          service: carlease-api-prod
+          cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true

@@ -83,13 +83,22 @@ jobs:
           echo "tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "Published $IMAGE_URI"
 
+      - name: Record image metadata
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          printf '%s\\n' "$IMAGE_URI" > api-image-uri.txt
+          printf '%s\\n' "$IMAGE_TAG" > api-image-sha.txt
+
       - name: Upload image metadata
         uses: actions/upload-artifact@v4
         with:
           name: carlease-api-image-${{ github.sha }}
           path: |
-            <(printf '%s\n' "${{ steps.image.outputs.uri }}")
-          if-no-files-found: ignore
+            api-image-uri.txt
+            api-image-sha.txt
+          if-no-files-found: error
           retention-days: 30
 
   deploy-nonprod:

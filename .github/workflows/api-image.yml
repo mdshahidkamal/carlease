@@ -1,0 +1,192 @@
+name: Backend API - Build, publish and deploy nonprod
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "tests/**"
+      - "ecs/**"
+      - ".github/workflows/api-ci.yml"
+      - ".github/workflows/api-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: backend-api-main
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-2
+  ECR_REPOSITORY: carlease-api
+  ECS_CLUSTER: carlease-cluster
+
+jobs:
+  publish-image:
+    name: Build, test and publish immutable image
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      image_uri: ${{ steps.image.outputs.uri }}
+      image_tag: ${{ steps.image.outputs.tag }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+          cache: true
+          cache-dependency-path: |
+            backend/CarLease.Api.csproj
+            tests/CarLease.Api.Tests/CarLease.Api.Tests.csproj
+
+      - name: Restore solution
+        run: dotnet restore backend/CarLease.Api.sln
+
+      - name: Build solution
+        run: dotnet build backend/CarLease.Api.sln --configuration Release --no-restore
+
+      - name: Run unit tests
+        run: dotnet test backend/CarLease.Api.sln --configuration Release --no-build
+
+      - name: Validate ECR publishing configuration
+        env:
+          AWS_PUBLISH_ROLE_ARN: ${{ secrets.AWS_PUBLISH_ROLE_ARN }}
+        run: |
+          test -n "$AWS_PUBLISH_ROLE_ARN" || { echo "::error::Missing repository secret AWS_PUBLISH_ROLE_ARN"; exit 1; }
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Check whether immutable SHA image already exists
+        id: existing
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Image tag already exists; reusing immutable image."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push API image
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker build --pull --tag "$IMAGE_URI" ./backend
+          docker push "$IMAGE_URI"
+          echo "Published $IMAGE_URI"
+
+      - name: Resolve immutable image URI
+        id: image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          IMAGE_URI="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
+          aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" >/dev/null
+          echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Record image metadata
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          echo "$IMAGE_URI" > api-image-uri.txt
+          echo "$IMAGE_TAG" > api-image-sha.txt
+
+      - name: Upload image metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: carlease-api-image-${{ github.sha }}
+          path: |
+            api-image-uri.txt
+            api-image-sha.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  deploy-nonprod:
+    name: Deploy same image to nonprod
+    if: github.ref == 'refs/heads/main' && vars.NONPROD_DEPLOY_ENABLED == 'true'
+    needs: publish-image
+    runs-on: ubuntu-latest
+    environment: nonprod
+    steps:
+      - name: Checkout deployment configuration
+        uses: actions/checkout@v4
+
+      - name: Validate nonprod configuration
+        env:
+          AWS_NONPROD_ROLE_ARN: ${{ secrets.AWS_NONPROD_ROLE_ARN }}
+          DATABASE_SECRET_ARN: ${{ secrets.DATABASE_SECRET_ARN }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+        run: |
+          for name in AWS_NONPROD_ROLE_ARN DATABASE_SECRET_ARN FRONTEND_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing nonprod environment secret/variable: $name"
+              exit 1
+            fi
+          done
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_NONPROD_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Generate nonprod task definition
+        env:
+          IMAGE_URI: ${{ needs.publish-image.outputs.image_uri }}
+          DATABASE_SECRET_ARN: ${{ secrets.DATABASE_SECRET_ARN }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          with open("ecs/task-definition-nonprod.json", encoding="utf-8") as source:
+              task = json.load(source)
+
+          containers = task.get("containerDefinitions", [])
+          if len(containers) != 1 or containers[0].get("name") != "carlease-api":
+              raise SystemExit("Unexpected nonprod task definition container structure")
+
+          container = containers[0]
+          container["image"] = os.environ["IMAGE_URI"]
+          container["secrets"] = [{
+              "name": "ConnectionStrings__DefaultConnection",
+              "valueFrom": os.environ["DATABASE_SECRET_ARN"]
+          }]
+
+          for item in container.get("environment", []):
+              if item.get("name") == "FrontendUrl":
+                  item["value"] = os.environ["FRONTEND_URL"]
+
+          with open("ecs/task-definition-nonprod.generated.json", "w", encoding="utf-8") as target:
+              json.dump(task, target, indent=2)
+          PY
+
+      - name: Deploy nonprod ECS service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ecs/task-definition-nonprod.generated.json
+          service: carlease-api-nonprod
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true

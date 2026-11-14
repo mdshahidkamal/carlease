@@ -9,6 +9,14 @@ on:
       - "ecs/**"
       - ".config/dotnet-tools.json"
       - ".github/workflows/**"
+  pull_request:
+    branches: [develop]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "ecs/**"
+      - ".config/dotnet-tools.json"
+      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:
@@ -100,7 +108,7 @@ jobs:
     name: Migrate database and deploy Non-Production API
     runs-on: ubuntu-latest
     needs: [validate-api, validate-frontend]
-    if: github.ref == 'refs/heads/develop'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/develop'
     permissions:
       contents: read
       id-token: write

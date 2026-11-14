@@ -72,7 +72,8 @@ export default function BookingPage() {
     const form = new FormData(event.currentTarget)
     const payload = Object.fromEntries(form.entries())
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5292'}/api/bookings`, {
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? 'http://localhost:5292' : '')
+      const response = await fetch(`${apiBaseUrl}/api/bookings`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...payload,

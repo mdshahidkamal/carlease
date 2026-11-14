@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: carlease-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: carlease
+      POSTGRES_USER: carlease
+      POSTGRES_PASSWORD: carlease_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - carlease_postgres:/var/lib/postgresql/data
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: carlease-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@carlease.local
+      PGADMIN_DEFAULT_PASSWORD: carlease_admin_password
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+volumes:
+  carlease_postgres:

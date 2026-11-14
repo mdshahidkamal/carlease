@@ -1,0 +1,366 @@
+name: CarLease Non-Production Deployment
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "ecs/**"
+      - ".config/dotnet-tools.json"
+      - ".github/workflows/**"
+  pull_request:
+    branches: [develop]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "ecs/**"
+      - ".config/dotnet-tools.json"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: carlease-nonprod-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-2
+  ECR_REPOSITORY: carlease-api
+  ECS_CLUSTER: carlease-cluster
+  SERVICE_NAME: carlease-api-nonprod
+  TASK_FAMILY: carlease-api-nonprod
+  MIGRATION_TASK_FAMILY: carlease-db-migration-nonprod
+  TARGET_GROUP_NAME: carlease-api-nonprod-tg
+  DATABASE_SECRET_NAME: carlease/nonprod/database-credentials
+  AWS_ROLE_ARN: arn:aws:iam::996661624843:role/carlease/carlease-github-nonprod-deploy-role
+
+jobs:
+  validate-api:
+    name: Build, test and verify database migrations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            backend/CarLease.Api.csproj
+            tests/CarLease.Api.Tests/CarLease.Api.Tests.csproj
+
+      - name: Restore solution
+        run: dotnet restore backend/CarLease.Api.sln
+
+      - name: Restore local .NET tools
+        run: dotnet tool restore
+
+      - name: Build solution
+        run: dotnet build backend/CarLease.Api.sln --configuration Release --no-restore
+
+      - name: Run unit tests
+        run: dotnet test backend/CarLease.Api.sln --configuration Release --no-build --logger "trx;LogFileName=backend-tests.trx"
+
+      - name: Verify EF Core migrations match the current model
+        run: dotnet ef migrations has-pending-model-changes --project backend/CarLease.Api.csproj --startup-project backend/CarLease.Api.csproj
+
+      - name: Validate API container image
+        run: docker build --pull --file backend/Dockerfile --target runtime --tag carlease-api:ci .
+
+      - name: Validate database migration container image
+        run: docker build --pull --file backend/Dockerfile --target migrations --tag carlease-api:migrations-ci .
+
+  validate-frontend:
+    name: Lint and build React frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Build frontend
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: ""
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+
+  deploy-nonprod:
+    name: Migrate database and deploy Non-Production API
+    runs-on: ubuntu-latest
+    needs: [validate-api, validate-frontend]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/develop'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials using GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push API image
+        id: api-image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          MAPS_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+        run: |
+          IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "Reusing immutable API image for commit $IMAGE_TAG"
+          else
+            docker build --pull \
+              --file backend/Dockerfile \
+              --target runtime \
+              --build-arg VITE_API_BASE_URL="" \
+              --build-arg VITE_GOOGLE_MAPS_API_KEY="$MAPS_KEY" \
+              --tag "$IMAGE_URI" .
+            docker push "$IMAGE_URI"
+          fi
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push EF migration image
+        id: migration-image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG-migrations"
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG-migrations" >/dev/null 2>&1; then
+            echo "Reusing immutable migration image for commit $IMAGE_TAG"
+          else
+            docker build --pull \
+              --file backend/Dockerfile \
+              --target migrations \
+              --tag "$IMAGE_URI" .
+            docker push "$IMAGE_URI"
+          fi
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Non-Production database credentials secret ARN
+        id: dbsecret
+        run: |
+          SECRET_ARN=$(aws secretsmanager describe-secret \
+            --secret-id "$DATABASE_SECRET_NAME" \
+            --query ARN --output text)
+          if [[ -z "$SECRET_ARN" || "$SECRET_ARN" == "None" ]]; then
+            echo "Non-Production database credentials secret was not found."
+            exit 1
+          fi
+          echo "secret_arn=$SECRET_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Register PostgreSQL bootstrap task definition
+        if: vars.CARLEASE_DB_BOOTSTRAP_ENABLED != 'false'
+        id: bootstrap-task
+        run: |
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://ecs/task-definition-db-bootstrap.json \
+            --query taskDefinition.taskDefinitionArn --output text)
+          echo "task_definition_arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure Non-Production and Production database roles exist
+        if: vars.CARLEASE_DB_BOOTSTRAP_ENABLED != 'false'
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --task-definition "${{ steps.bootstrap-task.outputs.task_definition_arn }}" \
+            --launch-type FARGATE \
+            --platform-version LATEST \
+            --count 1 \
+            --network-configuration "awsvpcConfiguration={subnets=[subnet-02ac43e8cb8a006cc,subnet-024f83979cdb7e279],securityGroups=[sg-0b33604d7af8971f9],assignPublicIp=ENABLED}" \
+            --query 'tasks[0].taskArn' --output text)
+
+          if [[ -z "$TASK_ARN" || "$TASK_ARN" == "None" ]]; then
+            echo "ECS did not return a database bootstrap task ARN."
+            exit 1
+          fi
+
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN"
+
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          if [[ "$EXIT_CODE" != "0" ]]; then
+            STOP_REASON=$(aws ecs describe-tasks \
+              --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+              --query 'tasks[0].stoppedReason' --output text)
+            echo "Database bootstrap failed. Exit code: $EXIT_CODE"
+            echo "ECS stop reason: $STOP_REASON"
+            exit 1
+          fi
+          echo "Database roles and logical databases are ready."
+
+      - name: Render EF migration task definition
+        env:
+          IMAGE_URI: ${{ steps.migration-image.outputs.image_uri }}
+          SECRET_ARN: ${{ steps.dbsecret.outputs.secret_arn }}
+        run: |
+          jq --arg image "$IMAGE_URI" --arg secret "$SECRET_ARN" '
+            .containerDefinitions[0].image = $image
+            | .containerDefinitions[0].secrets = [
+                { "name": "Database__Username", "valueFrom": ($secret + ":username::") },
+                { "name": "Database__Password", "valueFrom": ($secret + ":password::") }
+              ]
+          ' ecs/task-definition-migrations-nonprod.json > /tmp/carlease-migration-task.json
+
+      - name: Register EF migration task definition
+        id: migration-task
+        run: |
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/carlease-migration-task.json \
+            --query taskDefinition.taskDefinitionArn --output text)
+          echo "task_definition_arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Run EF Core database migration
+        id: migrate
+        env:
+          TASK_DEFINITION_ARN: ${{ steps.migration-task.outputs.task_definition_arn }}
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --task-definition "$TASK_DEFINITION_ARN" \
+            --launch-type FARGATE \
+            --platform-version LATEST \
+            --count 1 \
+            --network-configuration "awsvpcConfiguration={subnets=[subnet-02ac43e8cb8a006cc,subnet-024f83979cdb7e279],securityGroups=[sg-0b33604d7af8971f9],assignPublicIp=ENABLED}" \
+            --query 'tasks[0].taskArn' --output text)
+
+          if [[ -z "$TASK_ARN" || "$TASK_ARN" == "None" ]]; then
+            echo "ECS did not return a migration task ARN."
+            exit 1
+          fi
+
+          echo "task_arn=$TASK_ARN" >> "$GITHUB_OUTPUT"
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN"
+
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          if [[ "$EXIT_CODE" != "0" ]]; then
+            STOP_REASON=$(aws ecs describe-tasks \
+              --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+              --query 'tasks[0].stoppedReason' --output text)
+            echo "Database migration failed. Exit code: $EXIT_CODE"
+            echo "ECS stop reason: $STOP_REASON"
+            exit 1
+          fi
+          echo "Database migration completed successfully."
+
+      - name: Render API task definition
+        env:
+          IMAGE_URI: ${{ steps.api-image.outputs.image_uri }}
+          SECRET_ARN: ${{ steps.dbsecret.outputs.secret_arn }}
+        run: |
+          jq --arg image "$IMAGE_URI" --arg secret "$SECRET_ARN" '
+            .containerDefinitions[0].image = $image
+            | .containerDefinitions[0].secrets = [
+                { "name": "Database__Username", "valueFrom": ($secret + ":username::") },
+                { "name": "Database__Password", "valueFrom": ($secret + ":password::") }
+              ]
+            | .containerDefinitions[0].environment |= map(
+                if .name == "ASPNETCORE_ENVIRONMENT" then .value = "NonProduction" else . end
+              )
+          ' ecs/task-definition-nonprod.json > /tmp/carlease-api-task.json
+
+      - name: Register API task definition
+        id: api-task
+        run: |
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/carlease-api-task.json \
+            --query taskDefinition.taskDefinitionArn --output text)
+          echo "task_definition_arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update Non-Production ECS service
+        env:
+          TASK_DEFINITION_ARN: ${{ steps.api-task.outputs.task_definition_arn }}
+        run: |
+          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups \
+            --names "$TARGET_GROUP_NAME" \
+            --query 'TargetGroups[0].TargetGroupArn' --output text)
+
+          SERVICE_STATUS=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" --services "$SERVICE_NAME" \
+            --query 'services[0].status' --output text)
+
+          if [[ "$SERVICE_STATUS" == "None" || "$SERVICE_STATUS" == "INACTIVE" ]]; then
+            aws ecs create-service \
+              --cluster "$ECS_CLUSTER" \
+              --service-name "$SERVICE_NAME" \
+              --task-definition "$TASK_DEFINITION_ARN" \
+              --desired-count 1 \
+              --launch-type FARGATE \
+              --platform-version LATEST \
+              --deployment-configuration "minimumHealthyPercent=100,maximumPercent=200,deploymentCircuitBreaker={enable=true,rollback=true}" \
+              --health-check-grace-period-seconds 90 \
+              --network-configuration "awsvpcConfiguration={subnets=[subnet-02ac43e8cb8a006cc,subnet-024f83979cdb7e279],securityGroups=[sg-0b33604d7af8971f9],assignPublicIp=ENABLED}" \
+              --load-balancers "targetGroupArn=$TARGET_GROUP_ARN,containerName=carlease-api,containerPort=8080" \
+              --tags key=Project,value=CarLease key=Environment,value=nonprod
+          else
+            aws ecs update-service \
+              --cluster "$ECS_CLUSTER" \
+              --service "$SERVICE_NAME" \
+              --task-definition "$TASK_DEFINITION_ARN" \
+              --desired-count 1
+          fi
+
+      - name: Wait for Non-Production service stability
+        run: |
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$SERVICE_NAME"
+
+      - name: Verify ALB target health
+        run: |
+          TARGET_GROUP_ARN=$(aws elbv2 describe-target-groups \
+            --names "$TARGET_GROUP_NAME" \
+            --query 'TargetGroups[0].TargetGroupArn' --output text)
+          for attempt in $(seq 1 12); do
+            HEALTH=$(aws elbv2 describe-target-health \
+              --target-group-arn "$TARGET_GROUP_ARN" \
+              --query 'TargetHealthDescriptions[0].TargetHealth.State' --output text)
+            if [[ "$HEALTH" == "healthy" ]]; then
+              break
+            fi
+            sleep 10
+          done
+          if [[ "$HEALTH" != "healthy" ]]; then
+            echo "Non-Production target did not become healthy."
+            aws elbv2 describe-target-health --target-group-arn "$TARGET_GROUP_ARN"
+            exit 1
+          fi
+
+      - name: Publish temporary AWS test URL
+        run: |
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names carlease-shared-alb \
+            --query 'LoadBalancers[0].DNSName' --output text)
+          echo "CarLease Non-Production: http://$ALB_DNS"
+          echo "API health: http://$ALB_DNS/health"
+          echo "Database check: http://$ALB_DNS/checkconnectionstring"
+          echo "SDLC demo: http://$ALB_DNS/api/sdlc-demo"

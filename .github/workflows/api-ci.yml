@@ -1,0 +1,96 @@
+name: Backend API CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "feature/**"
+      - "bugfix/**"
+      - "hotfix/**"
+    paths:
+      - "backend/**"
+      - "tests/**"
+      - ".config/dotnet-tools.json"
+      - ".github/workflows/api-ci.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "backend/**"
+      - "tests/**"
+      - ".config/dotnet-tools.json"
+      - ".github/workflows/api-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  build-and-test:
+    name: Restore, build, test and validate migrations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          cache: true
+          cache-dependency-path: |
+            backend/CarLease.Api.csproj
+            tests/CarLease.Api.Tests/CarLease.Api.Tests.csproj
+
+      - name: Restore solution
+        run: dotnet restore backend/CarLease.Api.sln
+
+      - name: Restore local .NET tools
+        run: dotnet tool restore
+
+      - name: Build solution
+        run: dotnet build backend/CarLease.Api.sln --configuration Release --no-restore
+
+      - name: Run unit tests
+        run: dotnet test backend/CarLease.Api.sln --configuration Release --no-build --logger "trx;LogFileName=backend-tests.trx"
+
+      - name: Verify EF Core migrations match the current model
+        run: dotnet ef migrations has-pending-model-changes --project backend/CarLease.Api.csproj --startup-project backend/CarLease.Api.csproj
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: "**/TestResults/*.trx"
+          if-no-files-found: ignore
+          retention-days: 7
+
+  docker-validation:
+    name: Validate API and migration Docker images
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Validate ECS task definition JSON
+        run: |
+          jq empty \
+            ecs/task-definition-db-bootstrap.json \
+            ecs/task-definition-migrations-nonprod.json \
+            ecs/task-definition-nonprod.json \
+            ecs/task-definition-production.json
+
+      - name: Validate API Docker image
+        run: docker build --pull --file backend/Dockerfile --target runtime --tag carlease-api:ci .
+
+      - name: Validate migration Docker image
+        run: docker build --pull --file backend/Dockerfile --target migrations --tag carlease-api:migrations-ci .

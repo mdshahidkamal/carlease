@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+.vs/
+.idea/
+allkeys.txt
+booking-mobile.png

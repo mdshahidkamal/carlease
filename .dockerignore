@@ -1,0 +1,12 @@
+.git
+.github
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/TestResults
+**/.vs
+**/.idea
+**/.vscode
+output
+website/assets

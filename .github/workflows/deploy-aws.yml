@@ -161,6 +161,45 @@ jobs:
           fi
           echo "secret_arn=$SECRET_ARN" >> "$GITHUB_OUTPUT"
 
+      - name: Register PostgreSQL bootstrap task definition
+        id: bootstrap-task
+        run: |
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://ecs/task-definition-db-bootstrap.json \
+            --query taskDefinition.taskDefinitionArn --output text)
+          echo "task_definition_arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure Non-Production and Production database roles exist
+        run: |
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --task-definition "${{ steps.bootstrap-task.outputs.task_definition_arn }}" \
+            --launch-type FARGATE \
+            --platform-version LATEST \
+            --count 1 \
+            --network-configuration "awsvpcConfiguration={subnets=[subnet-02ac43e8cb8a006cc,subnet-024f83979cdb7e279],securityGroups=[sg-0b33604d7af8971f9],assignPublicIp=ENABLED}" \
+            --query 'tasks[0].taskArn' --output text)
+
+          if [[ -z "$TASK_ARN" || "$TASK_ARN" == "None" ]]; then
+            echo "ECS did not return a database bootstrap task ARN."
+            exit 1
+          fi
+
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN"
+
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          if [[ "$EXIT_CODE" != "0" ]]; then
+            STOP_REASON=$(aws ecs describe-tasks \
+              --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+              --query 'tasks[0].stoppedReason' --output text)
+            echo "Database bootstrap failed. Exit code: $EXIT_CODE"
+            echo "ECS stop reason: $STOP_REASON"
+            exit 1
+          fi
+          echo "Database roles and logical databases are ready."
+
       - name: Render EF migration task definition
         env:
           IMAGE_URI: ${{ steps.migration-image.outputs.image_uri }}

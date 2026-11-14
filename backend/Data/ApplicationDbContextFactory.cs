@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Configuration;
 using Npgsql;
 
 namespace CarLease.Api.Data;
@@ -8,22 +9,39 @@ public sealed class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Ap
 {
     public ApplicationDbContext CreateDbContext(string[] args)
     {
-        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+        var currentDirectory = Directory.GetCurrentDirectory();
+        var settingsPath = Path.Combine(currentDirectory, "appsettings.json");
+        if (!File.Exists(settingsPath))
+            settingsPath = Path.Combine(currentDirectory, "backend", "appsettings.json");
+
+        var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Development";
+        var environmentSettingsPath = Path.Combine(
+            Path.GetDirectoryName(settingsPath)!,
+            $"appsettings.{environmentName}.json");
+
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile(settingsPath, optional: true)
+            .AddJsonFile(environmentSettingsPath, optional: true)
+            .AddUserSecrets<ApplicationDbContextFactory>(optional: true)
+            .AddEnvironmentVariables()
+            .Build();
+
+        var connectionString = configuration.GetConnectionString("DefaultConnection");
 
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            var host = Environment.GetEnvironmentVariable("Database__Host");
-            var username = Environment.GetEnvironmentVariable("Database__Username");
-            var password = Environment.GetEnvironmentVariable("Database__Password");
+            var host = configuration["Database:Host"];
+            var username = configuration["Database:Username"];
+            var password = configuration["Database:Password"];
 
             if (!string.IsNullOrWhiteSpace(host)
                 && !string.IsNullOrWhiteSpace(username)
                 && !string.IsNullOrWhiteSpace(password))
             {
-                var database = Environment.GetEnvironmentVariable("Database__Name")
-                    ?? throw new InvalidOperationException("Database__Name is not configured.");
+                var database = configuration["Database:Name"]
+                    ?? throw new InvalidOperationException("Database:Name is not configured.");
 
-                if (!int.TryParse(Environment.GetEnvironmentVariable("Database__Port"), out var port))
+                if (!int.TryParse(configuration["Database:Port"], out var port))
                     port = 5432;
 
                 connectionString = new NpgsqlConnectionStringBuilder
@@ -38,8 +56,8 @@ public sealed class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Ap
             }
             else
             {
-                // Used only by EF tooling when scaffolding migrations on a developer machine.
-                // The tooling does not open a database connection for migrations add.
+                // Used only for EF tooling when scaffolding migrations on a developer machine.
+                // Migration scaffolding does not open a database connection.
                 connectionString = "Host=localhost;Port=5432;Database=carlease_dev;Username=carlease_dev";
             }
         }

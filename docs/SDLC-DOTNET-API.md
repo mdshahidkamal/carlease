@@ -123,6 +123,17 @@ The `CarLease Non-Production Deployment` workflow runs automatically after a mer
 
 The workflow uses short-lived AWS credentials. No long-lived AWS keys or database passwords are stored in GitHub.
 
+### One-time database bootstrap switch
+
+The first Non-Production deployment also creates the separate PostgreSQL application logins and logical databases using a dedicated one-purpose ECS execution role. This is an initialization operation, not a normal part of every release.
+
+After the first successful deployment, open **GitHub → Settings → Secrets and variables → Actions → Variables** and create:
+
+- Name: `CARLEASE_DB_BOOTSTRAP_ENABLED`
+- Value: `false`
+
+The deploy workflow defaults to running bootstrap when this variable is absent. Setting it to `false` skips the master-database bootstrap step on subsequent code deployments. Set it back to `true` only when a controlled database bootstrap/recovery operation is explicitly required.
+
 ## Non-Production validation endpoints
 
 Temporary AWS test address (HTTP until the custom domain and HTTPS certificate are enabled):

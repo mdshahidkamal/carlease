@@ -13,6 +13,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     {
         var booking = modelBuilder.Entity<Booking>();
         booking.HasKey(x => x.Id);
+        booking.ToTable("Bookings");
         booking.HasIndex(x => x.BookingReference).IsUnique();
         booking.Property(x => x.BookingReference).HasMaxLength(32);
         booking.Property(x => x.Pickup).HasMaxLength(500);
@@ -22,11 +23,21 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         booking.Property(x => x.Email).HasMaxLength(160);
 
         var sdlcDemoRecord = modelBuilder.Entity<SdlcDemoRecord>();
-        sdlcDemoRecord.HasNoKey();
+        sdlcDemoRecord.HasKey(x => x.Id);
         sdlcDemoRecord.ToTable("sdlc_demo_records");
-        sdlcDemoRecord.Property(x => x.Id).HasColumnName("id");
-        sdlcDemoRecord.Property(x => x.Message).HasColumnName("message");
-        sdlcDemoRecord.Property(x => x.Environment).HasColumnName("environment");
-        sdlcDemoRecord.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
+        sdlcDemoRecord.Property(x => x.Id)
+            .HasColumnName("id")
+            .ValueGeneratedOnAdd();
+        sdlcDemoRecord.Property(x => x.Message)
+            .HasColumnName("message")
+            .HasMaxLength(500)
+            .IsRequired();
+        sdlcDemoRecord.Property(x => x.Environment)
+            .HasColumnName("environment")
+            .HasMaxLength(32)
+            .IsRequired();
+        sdlcDemoRecord.Property(x => x.CreatedAtUtc)
+            .HasColumnName("created_at_utc")
+            .IsRequired();
     }
 }

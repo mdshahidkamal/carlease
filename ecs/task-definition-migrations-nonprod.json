@@ -1,0 +1,49 @@
+{
+  "family": "carlease-db-migration-nonprod",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::996661624843:role/carlease/carlease-ecs-task-execution-role",
+  "taskRoleArn": "arn:aws:iam::996661624843:role/carlease/carlease-api-task-role",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "containerDefinitions": [
+    {
+      "name": "carlease-db-migrate",
+      "image": "REPLACED_BY_GITHUB_ACTIONS",
+      "essential": true,
+      "workingDirectory": "/src/backend",
+      "command": [
+        "database",
+        "update",
+        "--no-build",
+        "--project",
+        "CarLease.Api.csproj",
+        "--startup-project",
+        "CarLease.Api.csproj"
+      ],
+      "environment": [
+        { "name": "ASPNETCORE_ENVIRONMENT", "value": "NonProduction" },
+        { "name": "Database__Host", "value": "carlease-postgres.c3ugucioubmr.ap-southeast-2.rds.amazonaws.com" },
+        { "name": "Database__Port", "value": "5432" },
+        { "name": "Database__Name", "value": "carlease_nonprod" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/carlease-db-migrations",
+          "awslogs-region": "ap-southeast-2",
+          "awslogs-stream-prefix": "nonprod"
+        }
+      }
+    }
+  ],
+  "tags": [
+    { "key": "Project", "value": "CarLease" },
+    { "key": "Environment", "value": "nonprod" },
+    { "key": "Purpose", "value": "ef-core-database-migration" }
+  ]
+}

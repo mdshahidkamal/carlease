@@ -5,7 +5,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -24,6 +23,10 @@ builder.Services.AddCors(options => options.AddPolicy(frontendPolicy, policy =>
 
 var app = builder.Build();
 
+// Serve the compiled React application from wwwroot.
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -33,8 +36,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors(frontendPolicy);
 app.UseAuthorization();
+
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 app.MapGet("/checkconnectionstring", CarLease.Api.Endpoints.DatabaseConnectionEndpoint.Check);
 app.MapControllers();
+
+// React Router handles browser-side routes such as /booking.
+app.MapFallbackToFile("index.html");
 
 app.Run();

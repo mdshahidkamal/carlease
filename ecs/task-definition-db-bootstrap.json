@@ -1,0 +1,90 @@
+{
+  "family": "carlease-db-bootstrap",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::996661624843:role/carlease/carlease-db-bootstrap-execution-role",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "containerDefinitions": [
+    {
+      "name": "db-bootstrap",
+      "image": "public.ecr.aws/docker/library/postgres:17-alpine",
+      "essential": true,
+      "entryPoint": [
+        "/bin/sh",
+        "-c"
+      ],
+      "command": [
+        "set -eu\nexport PGPASSWORD=\"$MASTER_PASSWORD\"\n\npsql \"host=$DB_HOST port=$DB_PORT user=$MASTER_USERNAME dbname=postgres sslmode=require\" -v ON_ERROR_STOP=1 <<'SQL'\n\\\\getenv np_user NONPROD_USERNAME\n\\\\getenv np_pass NONPROD_PASSWORD\n\\\\getenv np_db NONPROD_DATABASE\n\\\\getenv pr_user PROD_USERNAME\n\\\\getenv pr_pass PROD_PASSWORD\n\\\\getenv pr_db PROD_DATABASE\n\nSELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'np_user', :'np_pass')\nWHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'np_user') \\\\gexec\nSELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'np_user', :'np_pass') \\\\gexec\nSELECT format('CREATE DATABASE %I OWNER %I', :'np_db', :'np_user')\nWHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'np_db') \\\\gexec\nSELECT format('ALTER DATABASE %I OWNER TO %I', :'np_db', :'np_user') \\\\gexec\n\nSELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'pr_user', :'pr_pass')\nWHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'pr_user') \\\\gexec\nSELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', :'pr_user', :'pr_pass') \\\\gexec\nSELECT format('CREATE DATABASE %I OWNER %I', :'pr_db', :'pr_user')\nWHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'pr_db') \\\\gexec\nSELECT format('ALTER DATABASE %I OWNER TO %I', :'pr_db', :'pr_user') \\\\gexec\nSQL\n\necho \"CarLease database roles and logical databases are provisioned.\"\n"
+      ],
+      "environment": [
+        {
+          "name": "DB_HOST",
+          "value": "carlease-postgres.c3ugucioubmr.ap-southeast-2.rds.amazonaws.com"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "NONPROD_DATABASE",
+          "value": "carlease_nonprod"
+        },
+        {
+          "name": "PROD_DATABASE",
+          "value": "carlease_prod"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "MASTER_USERNAME",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:996661624843:secret:rds!db-d123fa90-f947-4d09-92fd-1416753c653e-YvGXeQ:username::"
+        },
+        {
+          "name": "MASTER_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:996661624843:secret:rds!db-d123fa90-f947-4d09-92fd-1416753c653e-YvGXeQ:password::"
+        },
+        {
+          "name": "NONPROD_USERNAME",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:996661624843:secret:carlease/nonprod/database-credentials-GCuTrz:username::"
+        },
+        {
+          "name": "NONPROD_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:996661624843:secret:carlease/nonprod/database-credentials-GCuTrz:password::"
+        },
+        {
+          "name": "PROD_USERNAME",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:996661624843:secret:carlease/prod/database-credentials-kexSON:username::"
+        },
+        {
+          "name": "PROD_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:ap-southeast-2:996661624843:secret:carlease/prod/database-credentials-kexSON:password::"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/carlease-db-bootstrap",
+          "awslogs-region": "ap-southeast-2",
+          "awslogs-stream-prefix": "bootstrap"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "key": "Project",
+      "value": "CarLease"
+    },
+    {
+      "key": "Purpose",
+      "value": "initial-database-bootstrap"
+    }
+  ]
+}

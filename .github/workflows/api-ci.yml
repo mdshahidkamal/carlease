@@ -81,6 +81,14 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Validate ECS task definition JSON
+        run: |
+          jq empty \
+            ecs/task-definition-db-bootstrap.json \
+            ecs/task-definition-migrations-nonprod.json \
+            ecs/task-definition-nonprod.json \
+            ecs/task-definition-production.json
+
       - name: Validate API Docker image
         run: docker build --pull --file backend/Dockerfile --target runtime --tag carlease-api:ci .
 

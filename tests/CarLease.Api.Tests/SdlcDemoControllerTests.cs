@@ -30,12 +30,14 @@ public class SdlcDemoControllerTests
         db.SdlcDemoRecords.AddRange(
             new SdlcDemoRecord
             {
+                Id = 2,
                 Message = "Second test record",
                 Environment = "NonProduction",
                 CreatedAtUtc = new DateTime(2026, 11, 10, 12, 1, 0, DateTimeKind.Utc)
             },
             new SdlcDemoRecord
             {
+                Id = 1,
                 Message = "First test record",
                 Environment = "NonProduction",
                 CreatedAtUtc = new DateTime(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc)

@@ -1,7 +1,9 @@
 {
   "family": "carlease-api-nonprod",
   "networkMode": "awsvpc",
-  "requiresCompatibilities": ["FARGATE"],
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
   "cpu": "256",
   "memory": "512",
   "executionRoleArn": "arn:aws:iam::996661624843:role/carlease/carlease-ecs-task-execution-role",
@@ -34,6 +36,18 @@
         {
           "name": "FrontendUrl",
           "value": "REPLACED_BY_GITHUB_ACTIONS"
+        },
+        {
+          "name": "Database__Host",
+          "value": "carlease-postgres.c3ugucioubmr.ap-southeast-2.rds.amazonaws.com"
+        },
+        {
+          "name": "Database__Port",
+          "value": "5432"
+        },
+        {
+          "name": "Database__Name",
+          "value": "carlease_nonprod"
         }
       ],
       "logConfiguration": {

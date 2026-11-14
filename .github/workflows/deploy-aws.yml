@@ -40,7 +40,7 @@ jobs:
             echo "service=carlease-api-nonprod" >> "$GITHUB_OUTPUT"
             echo "task_family=carlease-api-nonprod" >> "$GITHUB_OUTPUT"
             echo "target_group=carlease-api-nonprod-tg" >> "$GITHUB_OUTPUT"
-            echo "secret_name=carlease/nonprod/database-connection-string" >> "$GITHUB_OUTPUT"
+            echo "secret_name=carlease/nonprod/database-credentials" >> "$GITHUB_OUTPUT"
             echo "task_definition=ecs/task-definition-nonprod.json" >> "$GITHUB_OUTPUT"
             echo "role_arn=arn:aws:iam::996661624843:role/carlease/carlease-github-nonprod-deploy-role" >> "$GITHUB_OUTPUT"
           elif [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
@@ -48,7 +48,7 @@ jobs:
             echo "service=carlease-api-prod" >> "$GITHUB_OUTPUT"
             echo "task_family=carlease-api-prod" >> "$GITHUB_OUTPUT"
             echo "target_group=carlease-api-prod-tg" >> "$GITHUB_OUTPUT"
-            echo "secret_name=carlease/prod/database-connection-string" >> "$GITHUB_OUTPUT"
+            echo "secret_name=carlease/prod/database-credentials" >> "$GITHUB_OUTPUT"
             echo "task_definition=ecs/task-definition-production.json" >> "$GITHUB_OUTPUT"
             echo "role_arn=arn:aws:iam::996661624843:role/carlease/carlease-github-production-deploy-role" >> "$GITHUB_OUTPUT"
           else
@@ -106,8 +106,12 @@ jobs:
             .containerDefinitions[0].image = $image
             | .containerDefinitions[0].secrets = [
                 {
-                  "name": "ConnectionStrings__DefaultConnection",
-                  "valueFrom": $secret
+                  "name": "Database__Username",
+                  "valueFrom": ($secret + ":username::")
+                },
+                {
+                  "name": "Database__Password",
+                  "valueFrom": ($secret + ":password::")
                 }
               ]
           ' "$TASK_DEFINITION_FILE" > /tmp/carlease-task-definition.json

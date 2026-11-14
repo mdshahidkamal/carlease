@@ -1,77 +1,74 @@
-# CarLease AWS deployment setup
+# CarLease AWS deployment architecture
 
-## Independent delivery phases
+## Target AWS environment
 
-This project uses three separate development and release phases:
+- AWS account: Make It Happen (`996661624843`)
+- Region: Asia Pacific (Sydney), `ap-southeast-2`
+- ECS cluster: `carlease-cluster`
+- ECR repository: `carlease-api`
+- Shared Application Load Balancer: `carlease-shared-alb`
+- PostgreSQL instance: `carlease-postgres`
 
-### 1. React frontend
+## Application packaging
 
-Changes under `frontend/` trigger `.github/workflows/frontend.yml`. The workflow builds React, uploads `frontend/dist/` to S3, and invalidates CloudFront.
+The React frontend is built with Node.js 22 and copied into the ASP.NET Core `wwwroot` directory. The .NET 10 API serves both the React single-page application and API endpoints from one container.
 
-### 2. .NET API
+- Website routes: `/` and `/booking`
+- API routes: `/api/*`
+- Health endpoint: `/health`
+- Container port: `8080`
 
-Changes under `backend/` trigger `.github/workflows/api.yml`. The workflow builds and pushes the API image to ECR, generates an ECS task definition, and updates the ECS service.
+The Docker build context is the repository root:
 
-### 3. PostgreSQL
-
-PostgreSQL and EF Core migrations are deployed manually. Do not trigger database migrations from frontend or API CI/CD workflows.
-
-Before manually updating an environment, create and review a migration, back up the database, and run:
-
-```powershell
-dotnet ef database update `
-  --project backend/CarLease.Api.csproj `
-  --startup-project backend/CarLease.Api.csproj
+```bash
+docker build --file backend/Dockerfile --tag carlease-api:local .
 ```
 
-Use a production connection string supplied securely through local environment configuration or user secrets. Never commit it to the repository.
+## Environments
 
-## Required GitHub Actions secrets
+| Environment | Git branch | ECS service | Task definition family | Database |
+|---|---|---|---|---|
+| Non-Production | `develop` | `carlease-api-nonprod` | `carlease-api-nonprod` | `carlease_nonprod` |
+| Production | `main` | `carlease-api-prod` | `carlease-api-prod` | `carlease_prod` |
 
-Add these under **Repository → Settings → Secrets and variables → Actions**:
+Both environments use separate application tasks, separate database names and separate database credentials. They initially share one RDS PostgreSQL instance and one ALB to control costs.
 
-| Secret | Example or purpose |
-|---|---|
-| `AWS_ROLE_ARN` | IAM role ARN trusted by GitHub OIDC |
-| `AWS_REGION` | `us-east-1` |
-| `ECS_CLUSTER` | ECS cluster name |
-| `ECS_SERVICE` | ECS service name |
-| `ECS_EXECUTION_ROLE_ARN` | ECS task execution role ARN |
-| `ECS_TASK_ROLE_ARN` | ECS task role ARN |
-| `DATABASE_SECRET_ARN` | Secrets Manager ARN containing the PostgreSQL connection string |
-| `FRONTEND_URL` | `https://your-domain.example` |
-| `VITE_API_BASE_URL` | Public HTTPS API URL |
-| `VITE_GOOGLE_MAPS_API_KEY` | Browser-restricted Google Maps key |
-| `FRONTEND_BUCKET` | Public CloudFront-backed S3 bucket name |
-| `CLOUDFRONT_DISTRIBUTION_ID` | CloudFront distribution ID |
+## CI/CD
 
-## Required AWS resources
+- Backend CI: `.github/workflows/api-ci.yml`
+- Frontend CI: `.github/workflows/frontend.yml`
+- AWS deployment: `.github/workflows/deploy-aws.yml`
 
-- ECR repository named `carlease-api`
-- ECS Fargate cluster and service named according to the secrets above
-- Application Load Balancer health check path `/health`
-- RDS PostgreSQL database
-- Secrets Manager database secret
-- S3 bucket for the React build
-- CloudFront distribution using the S3 origin
-- ACM certificate and Route 53 DNS records
+Pushes to `develop` deploy Non-Production. Pushes to `main` deploy Production. GitHub Actions assumes a branch-restricted AWS IAM role through OIDC; no long-lived AWS access keys are stored in GitHub.
 
-## Database secret value
+## Runtime secrets
 
-Store a single Npgsql connection string in Secrets Manager:
+The ECS task execution role retrieves the environment-specific connection string from Secrets Manager at task start:
 
-```text
-Host=your-rds-host;Port=5432;Database=carlease;Username=carlease;Password=your-password
-```
+- `carlease/nonprod/database-connection-string`
+- `carlease/prod/database-connection-string`
 
-## GitHub OIDC setup
+The application receives it as `ConnectionStrings__DefaultConnection`. Never put database credentials in source code, Docker build arguments, frontend `VITE_` variables, task-definition plaintext environment values, or GitHub Actions logs.
 
-The IAM role configured by `AWS_ROLE_ARN` must trust `token.actions.githubusercontent.com` and restrict access to this repository and its `main` branch.
+A change to a Secrets Manager value requires an ECS service deployment so new tasks receive the updated secret.
 
-Required AWS role capabilities include ECR push/read, ECS task and service deployment, CloudFront invalidation, and S3 synchronization.
+## Networking and access
+
+- The ALB accepts public HTTP (port 80) for temporary functional testing.
+- ECS tasks run in public subnets with public IPs to avoid a NAT Gateway charge; their security group only accepts application traffic from the ALB security group.
+- RDS is in private database subnets and has PubliclyAccessible disabled.
+- RDS port 5432 accepts traffic only from the CarLease ECS security group.
+- ACM certificate is requested for `royallimoservice.us`, `www.royallimoservice.us` and `dev.royallimoservice.us`. DNS validation is pending in GoDaddy.
+- Until DNS validation is completed, use the ALB's AWS-generated hostname for HTTP testing only. Do not enter real customer information or passwords on that temporary HTTP endpoint.
 
 ## Database migrations
 
-The pipeline currently deploys the API but does not automatically migrate PostgreSQL. Before the first deployment, generate and apply the EF Core migration using an authorized administration environment or a separate ECS migration task.
+Do not automatically run EF Core migrations in the API container startup or the standard application deployment workflow.
 
-Google Maps keys and React API URLs are embedded into the frontend bundle and are visible to browsers; restrict the Maps key by domain and use HTTPS in production.
+Create and review migrations separately, take a backup before Production migration, then apply the migration using a controlled one-off task or authorized database administration environment.
+
+## Current temporary test hostname
+
+`http://carlease-shared-alb-153321973.ap-southeast-2.elb.amazonaws.com`
+
+The hostname will serve the application when the Non-Production ECS service is deployed and its target passes the ALB `/health` check.

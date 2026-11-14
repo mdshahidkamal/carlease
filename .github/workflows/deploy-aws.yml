@@ -126,13 +126,17 @@ jobs:
           MAPS_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: |
           IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-          docker build --pull \
-            --file backend/Dockerfile \
-            --target runtime \
-            --build-arg VITE_API_BASE_URL="" \
-            --build-arg VITE_GOOGLE_MAPS_API_KEY="$MAPS_KEY" \
-            --tag "$IMAGE_URI" .
-          docker push "$IMAGE_URI"
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "Reusing immutable API image for commit $IMAGE_TAG"
+          else
+            docker build --pull \
+              --file backend/Dockerfile \
+              --target runtime \
+              --build-arg VITE_API_BASE_URL="" \
+              --build-arg VITE_GOOGLE_MAPS_API_KEY="$MAPS_KEY" \
+              --tag "$IMAGE_URI" .
+            docker push "$IMAGE_URI"
+          fi
           echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
 
       - name: Build and push EF migration image
@@ -142,11 +146,15 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG-migrations"
-          docker build --pull \
-            --file backend/Dockerfile \
-            --target migrations \
-            --tag "$IMAGE_URI" .
-          docker push "$IMAGE_URI"
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG-migrations" >/dev/null 2>&1; then
+            echo "Reusing immutable migration image for commit $IMAGE_TAG"
+          else
+            docker build --pull \
+              --file backend/Dockerfile \
+              --target migrations \
+              --tag "$IMAGE_URI" .
+            docker push "$IMAGE_URI"
+          fi
           echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
 
       - name: Resolve Non-Production database credentials secret ARN
@@ -162,6 +170,7 @@ jobs:
           echo "secret_arn=$SECRET_ARN" >> "$GITHUB_OUTPUT"
 
       - name: Register PostgreSQL bootstrap task definition
+        if: vars.CARLEASE_DB_BOOTSTRAP_ENABLED != 'false'
         id: bootstrap-task
         run: |
           TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
@@ -170,6 +179,7 @@ jobs:
           echo "task_definition_arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
 
       - name: Ensure Non-Production and Production database roles exist
+        if: vars.CARLEASE_DB_BOOTSTRAP_ENABLED != 'false'
         run: |
           TASK_ARN=$(aws ecs run-task \
             --cluster "$ECS_CLUSTER" \

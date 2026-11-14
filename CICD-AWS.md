@@ -45,10 +45,10 @@ Pushes to `develop` deploy Non-Production. Pushes to `main` deploy Production. G
 
 The ECS task execution role retrieves the environment-specific connection string from Secrets Manager at task start:
 
-- `carlease/nonprod/database-connection-string`
-- `carlease/prod/database-connection-string`
+- `carlease/nonprod/database-credentials`
+- `carlease/prod/database-credentials`
 
-The application receives it as `ConnectionStrings__DefaultConnection`. Never put database credentials in source code, Docker build arguments, frontend `VITE_` variables, task-definition plaintext environment values, or GitHub Actions logs.
+The ECS task receives the database username and password as `Database__Username` and `Database__Password`; the application builds its Npgsql connection string using the non-secret host, port and database settings. Never put database credentials in source code, Docker build arguments, frontend `VITE_` variables, task-definition plaintext environment values, or GitHub Actions logs.
 
 A change to a Secrets Manager value requires an ECS service deployment so new tasks receive the updated secret.
 

@@ -30,8 +30,8 @@ The backend Dockerfile builds the React frontend and copies its build output int
 Workflow: `.github/workflows/api-image.yml`
 
 Trigger:
-- Push/merge to `develop` when application, ECS or workflow files change.
-- Manual dispatch is available for an operator-run deployment from `develop`.
+- Every push/merge to `develop`.
+- Manual dispatch is available for an operator-run build/deployment from `develop`.
 
 Actions:
 1. Restore, build and test the .NET solution.

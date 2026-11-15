@@ -1,0 +1,267 @@
+name: Backend API - Build, publish and deploy nonprod
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: backend-api-develop
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-2
+  ECR_REPOSITORY: carlease-api
+  ECS_CLUSTER: carlease-cluster
+
+jobs:
+  publish-image:
+    name: Build, test and publish immutable image
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    outputs:
+      image_uri: ${{ steps.image.outputs.uri }}
+      image_tag: ${{ steps.image.outputs.tag }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+          cache: true
+          cache-dependency-path: |
+            backend/CarLease.Api.csproj
+            tests/CarLease.Api.Tests/CarLease.Api.Tests.csproj
+
+      - name: Restore solution
+        run: dotnet restore backend/CarLease.Api.sln
+
+      - name: Build solution
+        run: dotnet build backend/CarLease.Api.sln --configuration Release --no-restore
+
+      - name: Run unit tests
+        run: dotnet test backend/CarLease.Api.sln --configuration Release --no-build
+
+      - name: Validate ECR publishing configuration
+        env:
+          AWS_PUBLISH_ROLE_ARN: ${{ secrets.AWS_PUBLISH_ROLE_ARN }}
+        run: |
+          test -n "$AWS_PUBLISH_ROLE_ARN" || { echo "::error::Missing repository secret AWS_PUBLISH_ROLE_ARN"; exit 1; }
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Check whether immutable SHA image already exists
+        id: existing
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Image tag already exists; reusing immutable image."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push full-stack application image
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+        run: |
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+          docker build --pull \
+            --build-arg VITE_API_BASE_URL="" \
+            --build-arg VITE_GOOGLE_MAPS_API_KEY="$VITE_GOOGLE_MAPS_API_KEY" \
+            --file backend/Dockerfile \
+            --tag "$IMAGE_URI" \
+            .
+
+          docker push "$IMAGE_URI"
+          echo "Published $IMAGE_URI"
+
+      - name: Resolve immutable image URI
+        id: image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          IMAGE_URI="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
+          aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$IMAGE_TAG" >/dev/null
+          echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Record image metadata
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          echo "$IMAGE_URI" > api-image-uri.txt
+          echo "$IMAGE_TAG" > api-image-sha.txt
+
+      - name: Upload image metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: carlease-api-image-${{ github.sha }}
+          path: |
+            api-image-uri.txt
+            api-image-sha.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  deploy-nonprod:
+    name: Deploy same image to nonprod
+    if: github.ref == 'refs/heads/develop' && vars.NONPROD_DEPLOY_ENABLED == 'true'
+    needs: publish-image
+    runs-on: ubuntu-latest
+    environment: nonprod
+    steps:
+      - name: Checkout deployment configuration
+        uses: actions/checkout@v4
+
+      - name: Validate nonprod configuration
+        env:
+          AWS_NONPROD_ROLE_ARN: ${{ secrets.AWS_NONPROD_ROLE_ARN }}
+          DATABASE_SECRET_ARN: ${{ secrets.DATABASE_SECRET_ARN }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+        run: |
+          for name in AWS_NONPROD_ROLE_ARN DATABASE_SECRET_ARN FRONTEND_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing nonprod environment secret/variable: $name"
+              exit 1
+            fi
+          done
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_NONPROD_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Generate nonprod task definition
+        env:
+          IMAGE_URI: ${{ needs.publish-image.outputs.image_uri }}
+          DATABASE_SECRET_ARN: ${{ secrets.DATABASE_SECRET_ARN }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          with open("ecs/task-definition-nonprod.json", encoding="utf-8") as source:
+              task = json.load(source)
+
+          containers = task.get("containerDefinitions", [])
+          if len(containers) != 1 or containers[0].get("name") != "carlease-api":
+              raise SystemExit("Unexpected nonprod task definition container structure")
+
+          container = containers[0]
+          container["image"] = os.environ["IMAGE_URI"]
+          secret_arn = os.environ["DATABASE_SECRET_ARN"]
+          if not secret_arn.startswith("arn:aws:secretsmanager:"):
+              raise SystemExit("DATABASE_SECRET_ARN must be a Secrets Manager ARN")
+
+          # The secret is a JSON object with username and password keys.
+          # ECS injects each key separately; application code builds the Npgsql
+          # connection string without placing credentials in the task definition.
+          container["secrets"] = [
+              {
+                  "name": "DB_USERNAME",
+                  "valueFrom": secret_arn + ":username::"
+              },
+              {
+                  "name": "DB_PASSWORD",
+                  "valueFrom": secret_arn + ":password::"
+              }
+          ]
+
+          environment_values = {
+              "DB_HOST": "carlease-postgres.c3ugucioubmr.ap-southeast-2.rds.amazonaws.com",
+              "DB_NAME": "carlease_nonprod",
+              "DB_PORT": "5432"
+          }
+          existing_environment = {
+              item["name"]: item for item in container.get("environment", [])
+          }
+          for name, value in environment_values.items():
+              existing_environment[name] = {"name": name, "value": value}
+          container["environment"] = list(existing_environment.values())
+
+          for item in container.get("environment", []):
+              if item.get("name") == "FrontendUrl":
+                  item["value"] = os.environ["FRONTEND_URL"]
+
+          with open("ecs/task-definition-nonprod.generated.json", "w", encoding="utf-8") as target:
+              json.dump(task, target, indent=2)
+          PY
+
+      - name: Register nonprod task definition
+        id: register-task
+        run: |
+          TASK_DEF_ARN="$(aws ecs register-task-definition \
+            --cli-input-json file://ecs/task-definition-nonprod.generated.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)"
+          test -n "$TASK_DEF_ARN" || { echo "::error::Task definition registration returned no ARN"; exit 1; }
+          echo "arn=$TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
+          echo "Registered $TASK_DEF_ARN"
+
+      - name: Create or update nonprod ECS service
+        env:
+          TASK_DEF_ARN: ${{ steps.register-task.outputs.arn }}
+        run: |
+          SERVICE_STATUS="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services carlease-api-nonprod \
+            --query 'services[0].status' --output text 2>/dev/null || true)"
+
+          if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
+            echo "Updating existing nonprod ECS service"
+            aws ecs update-service \
+              --cluster "$ECS_CLUSTER" \
+              --service carlease-api-nonprod \
+              --task-definition "$TASK_DEF_ARN" \
+              --desired-count 1 >/dev/null
+          else
+            echo "Creating nonprod ECS service"
+            aws ecs create-service \
+              --cluster "$ECS_CLUSTER" \
+              --service-name carlease-api-nonprod \
+              --task-definition "$TASK_DEF_ARN" \
+              --desired-count 1 \
+              --launch-type FARGATE \
+              --platform-version LATEST \
+              --network-configuration 'awsvpcConfiguration={subnets=[subnet-024f83979cdb7e279,subnet-02ac43e8cb8a006cc],securityGroups=[sg-0b33604d7af8971f9],assignPublicIp=ENABLED}' \
+              --load-balancers 'targetGroupArn=arn:aws:elasticloadbalancing:ap-southeast-2:996661624843:targetgroup/carlease-api-nonprod-tg/48b49d5658dbf881,containerName=carlease-api,containerPort=8080' \
+              --health-check-grace-period-seconds 120 >/dev/null
+          fi
+
+      - name: Wait for nonprod ECS service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services carlease-api-nonprod
+
+# Non-production deployment gate enabled after operator confirmation.
+
+# Re-run deployment after repository-level gate was confirmed.
+
+# Retry nonprod deployment after OIDC trust policy correction.
+
+# Retry nonprod OIDC after correcting the environment role ARN.
+
+# ECS service is created on first deployment and updated on subsequent nonprod releases.

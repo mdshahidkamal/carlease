@@ -1,5 +1,6 @@
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
 import BookingPage from './pages/BookingPage'
+import SdlcDemoPage from './pages/SdlcDemoPage'
 import './App.css'
 
 function HomePage() {
@@ -15,9 +16,14 @@ function HomePage() {
               <small>Luxury Chauffeur Services</small>
             </span>
           </Link>
-          <Link className="nav-book" to="/booking">
-            Book a ride
-          </Link>
+          <div className="home-nav-actions">
+            <Link className="nav-demo" to="/sdlc-demo">
+              SDLC demo
+            </Link>
+            <Link className="nav-book" to="/booking">
+              Book a ride
+            </Link>
+          </div>
         </nav>
         <div className="hero-copy">
           <span className="eyebrow">Atlanta, Georgia</span>
@@ -66,6 +72,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/booking" element={<BookingPage />} />
+        <Route path="/sdlc-demo" element={<SdlcDemoPage />} />
       </Routes>
     </BrowserRouter>
   )

@@ -4,15 +4,17 @@ on:
   push:
     branches:
       - main
+      - develop
       - "feature/**"
       - "bugfix/**"
       - "hotfix/**"
     paths:
       - "backend/**"
+      - "frontend/**"
       - "tests/**"
       - ".github/workflows/api-ci.yml"
   pull_request:
-    branches: [main]
+    branches: [develop, main]
     paths:
       - "backend/**"
       - "tests/**"

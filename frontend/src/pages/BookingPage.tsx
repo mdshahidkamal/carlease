@@ -107,8 +107,9 @@ export default function BookingPage() {
 
     return (
         <main className="booking-shell">
-            <nav className="booking-top"><Link className="brand" to="/"><span className="brand-mark">R</span><span><b>Royal Limo Service</b><small>Luxury Chauffeur Services</small></span></Link><Link className="back-link" to="/">← Home</Link></nav>
-            <header className="booking-heading"><span className="eyebrow">Atlanta, Georgia</span><h1>Book your ride</h1><p>Enter your trip details, choose your vehicle and send your booking request.</p></header>
+            <section className="booking-hero">
+                <nav className="booking-top"><Link className="brand" to="/"><span className="brand-mark">R</span><span><b>Royal Limo Service</b><small>Luxury Chauffeur Services</small></span></Link><Link className="back-link" to="/">← Home</Link></nav>
+            </section>
             <form className="booking-card" onSubmit={handleSubmit}>
                 <section><h2><span>1</span>Journey details</h2>
                     <div className="grid"><div className="field full"><label>From / Pickup location *</label><div ref={pickupRef} className="place-field"><input name="pickup" required placeholder="Search pickup address or place" /></div></div>

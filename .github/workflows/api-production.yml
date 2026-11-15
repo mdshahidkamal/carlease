@@ -1,0 +1,162 @@
+name: Backend API - Promote tested image to production
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-release-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-2
+  AWS_ACCOUNT_ID: "996661624843"
+  ECR_REPOSITORY: carlease-api
+  ECS_CLUSTER: carlease-cluster
+  ECS_SERVICE: carlease-api-prod
+
+jobs:
+  deploy-production:
+    name: Promote the tested develop image to production
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.ref == 'develop'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+
+      - name: Validate production configuration
+        env:
+          AWS_PRODUCTION_ROLE_ARN: ${{ secrets.AWS_PRODUCTION_ROLE_ARN }}
+          DATABASE_SECRET_ARN: ${{ secrets.DATABASE_SECRET_ARN }}
+          DB_HOST: ${{ vars.DB_HOST }}
+          DB_NAME: ${{ vars.DB_NAME }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+        run: |
+          for name in AWS_PRODUCTION_ROLE_ARN DATABASE_SECRET_ARN DB_HOST DB_NAME FRONTEND_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing production environment secret/variable: $name"
+              exit 1
+            fi
+          done
+
+          if [[ "$DATABASE_SECRET_ARN" != arn:aws:secretsmanager:* ]]; then
+            echo "::error::DATABASE_SECRET_ARN must be a Secrets Manager ARN"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PRODUCTION_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify image previously tested in nonprod
+        id: image
+        env:
+          IMAGE_TAG: ${{ github.event.pull_request.head.sha }}
+        run: |
+          IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
+
+          aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_TAG" >/dev/null
+
+          echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "Verified existing image: $IMAGE_URI"
+
+      - name: Generate production task definition
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          DATABASE_SECRET_ARN: ${{ secrets.DATABASE_SECRET_ARN }}
+          DB_HOST: ${{ vars.DB_HOST }}
+          DB_NAME: ${{ vars.DB_NAME }}
+          DB_PORT: ${{ vars.DB_PORT }}
+          FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          with open("ecs/task-definition-production.json", encoding="utf-8") as source:
+              task = json.load(source)
+
+          containers = task.get("containerDefinitions", [])
+          if len(containers) != 1 or containers[0].get("name") != "carlease-api":
+              raise SystemExit("Unexpected production task definition container structure")
+
+          container = containers[0]
+          container["image"] = os.environ["IMAGE_URI"]
+
+          secret_arn = os.environ["DATABASE_SECRET_ARN"]
+          if not secret_arn.startswith("arn:aws:secretsmanager:"):
+              raise SystemExit("DATABASE_SECRET_ARN must be a Secrets Manager ARN")
+
+          # Secrets Manager secret must be JSON with username and password keys.
+          container["secrets"] = [
+              {"name": "DB_USERNAME", "valueFrom": secret_arn + ":username::"},
+              {"name": "DB_PASSWORD", "valueFrom": secret_arn + ":password::"}
+          ]
+
+          environment_values = {
+              "DB_HOST": os.environ["DB_HOST"],
+              "DB_NAME": os.environ["DB_NAME"],
+              "DB_PORT": os.environ.get("DB_PORT") or "5432"
+          }
+          existing_environment = {
+              item["name"]: item for item in container.get("environment", [])
+          }
+          for name, value in environment_values.items():
+              existing_environment[name] = {"name": name, "value": value}
+          container["environment"] = list(existing_environment.values())
+
+          for item in container.get("environment", []):
+              if item.get("name") == "FrontendUrl":
+                  item["value"] = os.environ["FRONTEND_URL"]
+
+          with open("ecs/task-definition-production.generated.json", "w", encoding="utf-8") as target:
+              json.dump(task, target, indent=2)
+          PY
+
+      - name: Register production task definition
+        id: register-task
+        run: |
+          TASK_DEF_ARN="$(aws ecs register-task-definition \
+            --cli-input-json file://ecs/task-definition-production.generated.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)"
+          test -n "$TASK_DEF_ARN" || { echo "::error::Task definition registration returned no ARN"; exit 1; }
+          echo "arn=$TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
+          echo "Registered $TASK_DEF_ARN"
+
+      - name: Update production ECS service
+        env:
+          TASK_DEF_ARN: ${{ steps.register-task.outputs.arn }}
+        run: |
+          SERVICE_STATUS="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].status' --output text)"
+
+          if [ "$SERVICE_STATUS" != "ACTIVE" ]; then
+            echo "::error::Production ECS service '$ECS_SERVICE' is not ACTIVE. Provision and validate it before release."
+            exit 1
+          fi
+
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "$TASK_DEF_ARN" \
+            --desired-count 1 >/dev/null
+
+      - name: Wait for production ECS service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"

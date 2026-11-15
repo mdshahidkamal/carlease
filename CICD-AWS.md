@@ -16,7 +16,7 @@ feature/* -> develop -> nonprod -> main -> production
 
 - Pull requests into `develop` run backend and frontend CI.
 - A merge to `develop` builds and publishes an immutable ECR image, then deploys it to nonprod when the `NONPROD_DEPLOY_ENABLED` environment variable is `true`.
-- After nonprod validation, a pull request from `develop` to `main` promotes the same immutable ECR image to production after the production GitHub Environment approval.
+- After nonprod validation, a pull request from `develop` to `main` promotes the same immutable ECR image to production after the production GitHub Environment approval. The production workflow runs on the resulting main-branch update and verifies that the commit is associated with a merged PR from `develop`.
 - Database migrations remain a separate, reviewed operation.
 
 See [CICD-GITHUB-FLOW.md](CICD-GITHUB-FLOW.md) for workflow triggers, GitHub configuration and release steps.

@@ -229,7 +229,7 @@
 .home-hero {
   position: relative;
   min-height: 620px;
-  background: url('https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&w=1800&q=85') center/cover no-repeat;
+  background: url('./assets/headerimage.jpeg') center/cover no-repeat;
 }
 .home-overlay {
   position: absolute;

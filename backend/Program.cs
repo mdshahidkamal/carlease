@@ -59,6 +59,9 @@ builder.Services.AddCors(options => options.AddPolicy(frontendPolicy, policy =>
         .AllowAnyMethod()));
 
 var app = builder.Build();
+// Serve React frontend files.
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -72,5 +75,7 @@ app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 app.MapGet("/checkconnectionstring", CarLease.Api.Endpoints.DatabaseConnectionEndpoint.Check);
 app.MapControllers();
+// React Router fallback: serve index.html for frontend routes.
+app.MapFallbackToFile("index.html");
 
 app.Run();

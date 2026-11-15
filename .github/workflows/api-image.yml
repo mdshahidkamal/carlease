@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "frontend/**"
       - "backend/**"
       - "tests/**"
       - "ecs/**"
@@ -82,14 +83,22 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and push API image
+      - name: Build and push full-stack application image
         if: steps.existing.outputs.exists == 'false'
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: |
           IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-          docker build --pull --tag "$IMAGE_URI" ./backend
+
+          docker build --pull \
+            --build-arg VITE_API_BASE_URL="" \
+            --build-arg VITE_GOOGLE_MAPS_API_KEY="$VITE_GOOGLE_MAPS_API_KEY" \
+            --file backend/Dockerfile \
+            --tag "$IMAGE_URI" \
+            .
+
           docker push "$IMAGE_URI"
           echo "Published $IMAGE_URI"
 

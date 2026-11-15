@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - develop
       - "feature/**"
       - "bugfix/**"
       - "hotfix/**"
@@ -11,7 +12,7 @@ on:
       - "frontend/**"
       - ".github/workflows/frontend.yml"
   pull_request:
-    branches: [main]
+    branches: [develop, main]
     paths:
       - "frontend/**"
       - ".github/workflows/frontend.yml"

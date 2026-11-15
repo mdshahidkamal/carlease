@@ -1,17 +1,53 @@
 using CarLease.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Prefer an explicitly configured connection string (local development).
+// In ECS, construct it from the individual Secrets Manager JSON-key values.
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    var dbHost = builder.Configuration["DB_HOST"];
+    var dbName = builder.Configuration["DB_NAME"];
+    var dbUsername = builder.Configuration["DB_USERNAME"];
+    var dbPassword = builder.Configuration["DB_PASSWORD"];
+    var dbPortValue = builder.Configuration["DB_PORT"] ?? "5432";
+
+    if (string.IsNullOrWhiteSpace(dbHost) ||
+        string.IsNullOrWhiteSpace(dbName) ||
+        string.IsNullOrWhiteSpace(dbUsername) ||
+        string.IsNullOrWhiteSpace(dbPassword))
+    {
+        throw new InvalidOperationException(
+            "Database configuration is incomplete. Configure ConnectionStrings:DefaultConnection " +
+            "or DB_HOST, DB_NAME, DB_USERNAME and DB_PASSWORD.");
+    }
+
+    if (!int.TryParse(dbPortValue, out var dbPort))
+    {
+        throw new InvalidOperationException("DB_PORT must be a valid TCP port number.");
+    }
+
+    connectionString = new NpgsqlConnectionStringBuilder
+    {
+        Host = dbHost,
+        Port = dbPort,
+        Database = dbName,
+        Username = dbUsername,
+        Password = dbPassword,
+        SslMode = SslMode.Require
+    }.ConnectionString;
+}
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")
-        ?? throw new InvalidOperationException("DefaultConnection is not configured.")));
+    options.UseNpgsql(connectionString));
 
 const string frontendPolicy = "FrontendPolicy";
 builder.Services.AddCors(options => options.AddPolicy(frontendPolicy, policy =>

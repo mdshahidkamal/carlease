@@ -17,6 +17,7 @@ on:
     branches: [develop, main]
     paths:
       - "backend/**"
+      - "frontend/**"
       - "tests/**"
       - ".github/workflows/api-ci.yml"
   workflow_dispatch:

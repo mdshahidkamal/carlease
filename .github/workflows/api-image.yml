@@ -215,3 +215,5 @@ jobs:
           service: carlease-api-nonprod
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
+
+# Non-production deployment gate enabled after operator confirmation.

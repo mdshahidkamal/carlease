@@ -217,3 +217,5 @@ jobs:
           wait-for-service-stability: true
 
 # Non-production deployment gate enabled after operator confirmation.
+
+# Re-run deployment after repository-level gate was confirmed.

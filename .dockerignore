@@ -1,0 +1,25 @@
+# .NET build artifacts
+**/bin/
+**/obj/
+
+# Frontend build artifacts and dependencies
+**/node_modules/
+**/dist/
+
+# IDE files
+.vs/
+.idea/
+.vscode/
+
+# Git metadata
+.git/
+
+# Test output
+**/TestResults/
+
+# Local configuration and secrets
+**/.env
+**/.env.*
+**/secrets.json
+**/*.user
+**/*.suo

@@ -221,3 +221,5 @@ jobs:
 # Re-run deployment after repository-level gate was confirmed.
 
 # Retry nonprod deployment after OIDC trust policy correction.
+
+# Retry nonprod OIDC after correcting the environment role ARN.

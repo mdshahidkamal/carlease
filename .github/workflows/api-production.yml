@@ -10,7 +10,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: production-release-${{ github.event.pull_request.number }}
+  group: production-release-${{ github.sha }}
   cancel-in-progress: false
 
 env:
@@ -21,12 +21,43 @@ env:
   ECS_SERVICE: carlease-api-prod
 
 jobs:
+  identify-release:
+    name: Confirm merged develop-to-main release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      image_tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - name: Identify the merged develop-to-main release PR
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRS="$(gh api -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls")"
+
+          IMAGE_TAG="$(printf '%s' "$PRS" | jq -r --arg repository "$GITHUB_REPOSITORY" \
+            '[.[] | select(.base.ref == "main" and .head.ref == "develop" and .head.repo.full_name == $repository and .merged_at != null)] | last | .head.sha // empty')"
+
+          if [[ ! "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::This main-branch update is not associated with a merged develop-to-main PR. No production deployment will occur."
+            exit 1
+          fi
+
+          echo "tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "Release source commit: $IMAGE_TAG"
+
   deploy-production:
     name: Promote the tested develop image to production
-    if: >-
-      github.ref == 'refs/heads/main'
+    needs: identify-release
+    if: needs.identify-release.outputs.image_tag != ''
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout release commit
         uses: actions/checkout@v4
@@ -57,29 +88,10 @@ jobs:
           role-to-assume: ${{ secrets.AWS_PRODUCTION_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Identify the merged develop-to-main release PR
-        id: release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PRS="$(gh api -H "Accept: application/vnd.github+json" \
-            "/repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls")"
-
-          IMAGE_TAG="$(printf '%s' "$PRS" | jq -r \
-            '[.[] | select(.base.ref == "main" and .head.ref == "develop" and .merged_at != null)] | last | .head.sha // empty')"
-
-          if [[ ! "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::This main-branch update is not associated with a merged develop-to-main PR. No production deployment will occur."
-            exit 1
-          fi
-
-          echo "tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
-          echo "Release source commit: $IMAGE_TAG"
-
       - name: Verify image previously tested in nonprod
         id: image
         env:
-          IMAGE_TAG: ${{ steps.release.outputs.tag }}
+          IMAGE_TAG: ${{ needs.identify-release.outputs.image_tag }}
         run: |
           IMAGE_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG"
 

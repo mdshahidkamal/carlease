@@ -2,7 +2,7 @@ name: Backend API - Build, publish and deploy nonprod
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
     paths:
       - "frontend/**"
       - "backend/**"
@@ -17,7 +17,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: backend-api-main
+  group: backend-api-develop
   cancel-in-progress: false
 
 env:
@@ -28,7 +28,7 @@ env:
 jobs:
   publish-image:
     name: Build, test and publish immutable image
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     outputs:
       image_uri: ${{ steps.image.outputs.uri }}
@@ -133,7 +133,7 @@ jobs:
 
   deploy-nonprod:
     name: Deploy same image to nonprod
-    if: github.ref == 'refs/heads/main' && vars.NONPROD_DEPLOY_ENABLED == 'true'
+    if: github.ref == 'refs/heads/develop' && vars.NONPROD_DEPLOY_ENABLED == 'true'
     needs: publish-image
     runs-on: ubuntu-latest
     environment: nonprod

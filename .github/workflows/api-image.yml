@@ -3,13 +3,6 @@ name: Backend API - Build, publish and deploy nonprod
 on:
   push:
     branches: [develop]
-    paths:
-      - "frontend/**"
-      - "backend/**"
-      - "tests/**"
-      - "ecs/**"
-      - ".github/workflows/api-ci.yml"
-      - ".github/workflows/api-image.yml"
   workflow_dispatch:
 
 permissions:

@@ -208,13 +208,51 @@ jobs:
               json.dump(task, target, indent=2)
           PY
 
-      - name: Deploy nonprod ECS service
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ecs/task-definition-nonprod.generated.json
-          service: carlease-api-nonprod
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+      - name: Register nonprod task definition
+        id: register-task
+        run: |
+          TASK_DEF_ARN="$(aws ecs register-task-definition \
+            --cli-input-json file://ecs/task-definition-nonprod.generated.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)"
+          test -n "$TASK_DEF_ARN" || { echo "::error::Task definition registration returned no ARN"; exit 1; }
+          echo "arn=$TASK_DEF_ARN" >> "$GITHUB_OUTPUT"
+          echo "Registered $TASK_DEF_ARN"
+
+      - name: Create or update nonprod ECS service
+        env:
+          TASK_DEF_ARN: ${{ steps.register-task.outputs.arn }}
+        run: |
+          SERVICE_STATUS="$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services carlease-api-nonprod \
+            --query 'services[0].status' --output text 2>/dev/null || true)"
+
+          if [ "$SERVICE_STATUS" = "ACTIVE" ]; then
+            echo "Updating existing nonprod ECS service"
+            aws ecs update-service \
+              --cluster "$ECS_CLUSTER" \
+              --service carlease-api-nonprod \
+              --task-definition "$TASK_DEF_ARN" \
+              --desired-count 1 >/dev/null
+          else
+            echo "Creating nonprod ECS service"
+            aws ecs create-service \
+              --cluster "$ECS_CLUSTER" \
+              --service-name carlease-api-nonprod \
+              --task-definition "$TASK_DEF_ARN" \
+              --desired-count 1 \
+              --launch-type FARGATE \
+              --platform-version LATEST \
+              --network-configuration 'awsvpcConfiguration={subnets=[subnet-024f83979cdb7e279,subnet-02ac43e8cb8a006cc],securityGroups=[sg-0b33604d7af8971f9],assignPublicIp=ENABLED}' \
+              --load-balancers 'targetGroupArn=arn:aws:elasticloadbalancing:ap-southeast-2:996661624843:targetgroup/carlease-api-nonprod-tg/48b49d5658dbf881,containerName=carlease-api,containerPort=8080' \
+              --health-check-grace-period-seconds 120 >/dev/null
+          fi
+
+      - name: Wait for nonprod ECS service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services carlease-api-nonprod
 
 # Non-production deployment gate enabled after operator confirmation.
 
@@ -223,3 +261,5 @@ jobs:
 # Retry nonprod deployment after OIDC trust policy correction.
 
 # Retry nonprod OIDC after correcting the environment role ARN.
+
+# ECS service is created on first deployment and updated on subsequent nonprod releases.

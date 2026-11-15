@@ -47,18 +47,19 @@ The deployment uses the GitHub Environment named `nonprod`. Keep the deployment 
 Workflow: `.github/workflows/api-production.yml`
 
 Trigger:
-- A pull request targeting `main` is closed and merged.
-- The pull request source branch must be exactly `develop`.
+- A push/update to `main` after a pull request merge.
+- The workflow queries GitHub for the pull request associated with the pushed commit and proceeds only when the merged PR source is exactly `develop` and the base is `main`.
 
 Actions:
-1. Use the source PR head SHA (the tested `develop` commit) as the ECR image tag.
-2. Verify that this immutable image already exists in ECR.
-3. Do not rebuild the image.
-4. Generate and register the production ECS task definition.
-5. Update the existing ECS service `carlease-api-prod`.
-6. Wait for ECS service stability.
+1. Resolve the merged `develop`-to-`main` PR associated with the main-branch commit.
+2. Use that PR's head SHA (the tested `develop` commit) as the ECR image tag.
+3. Verify that this immutable image already exists in ECR.
+4. Do not rebuild the image.
+5. Generate and register the production ECS task definition.
+6. Update the existing ECS service `carlease-api-prod`.
+7. Wait for ECS service stability.
 
-The job uses the GitHub Environment named `production`. Configure required reviewers on this environment so production deployment pauses for approval. The workflow intentionally fails if the production ECS service is not already ACTIVE; it does not create or modify AWS networking, load balancers, databases or other infrastructure.
+The job uses the GitHub Environment named `production`. Configure required reviewers on this environment so production deployment pauses for approval. The push-based trigger also supports the first release that introduces this workflow into `main`. The workflow intentionally fails if the production ECS service is not already ACTIVE; it does not create or modify AWS networking, load balancers, databases or other infrastructure.
 
 A release PR from `develop` to `main` must only be merged after non-production testing and sign-off. Merging that PR initiates production promotion.
 

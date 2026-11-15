@@ -649,3 +649,128 @@
     grid-template-columns: minmax(0, 1fr) 96px;
   }
 }
+
+.home-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nav-demo {
+  padding: 11px 15px;
+  color: #e8d8b8;
+  font-size: 13px;
+}
+.demo-shell {
+  width: min(100% - 28px, 1060px);
+  text-align: left;
+}
+.demo-shell .booking-heading h1 {
+  font-size: clamp(32px, 6vw, 46px);
+}
+.demo-card {
+  overflow: hidden;
+  border: 1px solid rgba(214, 179, 106, .22);
+  border-radius: 17px;
+  background: #151515;
+}
+.demo-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--line);
+}
+.demo-card-header h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.demo-card-header p,
+.demo-status {
+  color: var(--muted);
+  font-size: 12px;
+}
+.demo-load-button {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 99px;
+  background: var(--red);
+  color: white;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.demo-load-button:disabled {
+  cursor: wait;
+  opacity: .7;
+}
+.demo-load-button:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+}
+.demo-status,
+.demo-error {
+  margin: 0;
+  padding: 22px;
+}
+.demo-error {
+  color: #ff9a9f;
+  font-size: 13px;
+}
+.demo-table-wrap {
+  overflow-x: auto;
+}
+.demo-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.demo-table th,
+.demo-table td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  font-size: 13px;
+}
+.demo-table th {
+  color: #e8d8b8;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.demo-table td:first-child {
+  color: var(--gold);
+  font-family: var(--mono);
+}
+.demo-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (max-width: 600px) {
+  .home-nav-actions {
+    gap: 2px;
+  }
+  .nav-demo {
+    padding-inline: 8px;
+    font-size: 11px;
+  }
+  .demo-shell {
+    width: calc(100% - 20px);
+  }
+  .demo-card-header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 17px 14px;
+  }
+  .demo-load-button {
+    width: 100%;
+  }
+  .demo-table th,
+  .demo-table td {
+    padding: 12px;
+    font-size: 12px;
+  }
+}

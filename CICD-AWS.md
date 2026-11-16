@@ -1,77 +1,115 @@
-# CarLease AWS deployment setup
+# CarLease AWS deployment configuration
 
-## Independent delivery phases
+## Deployment architecture
 
-This project uses three separate development and release phases:
+CarLease packages the React frontend and .NET API into one Docker image. The Dockerfile builds the React application, copies the built files into the .NET API container's `wwwroot`, and serves the frontend and API from the same ECS-hosted application.
 
-### 1. React frontend
+The frontend is not independently deployed to S3 by the current `frontend.yml` workflow. That workflow performs CI validation only. The API image workflow builds and publishes the combined frontend/API image.
 
-Changes under `frontend/` trigger `.github/workflows/frontend.yml`. The workflow builds React, uploads `frontend/dist/` to S3, and invalidates CloudFront.
+## Git and deployment flow
 
-### 2. .NET API
-
-Changes under `backend/` trigger `.github/workflows/api.yml`. The workflow builds and pushes the API image to ECR, generates an ECS task definition, and updates the ECS service.
-
-### 3. PostgreSQL
-
-PostgreSQL and EF Core migrations are deployed manually. Do not trigger database migrations from frontend or API CI/CD workflows.
-
-Before manually updating an environment, create and review a migration, back up the database, and run:
-
-```powershell
-dotnet ef database update `
-  --project backend/CarLease.Api.csproj `
-  --startup-project backend/CarLease.Api.csproj
-```
-
-Use a production connection string supplied securely through local environment configuration or user secrets. Never commit it to the repository.
-
-## Required GitHub Actions secrets
-
-Add these under **Repository → Settings → Secrets and variables → Actions**:
-
-| Secret | Example or purpose |
-|---|---|
-| `AWS_ROLE_ARN` | IAM role ARN trusted by GitHub OIDC |
-| `AWS_REGION` | `us-east-1` |
-| `ECS_CLUSTER` | ECS cluster name |
-| `ECS_SERVICE` | ECS service name |
-| `ECS_EXECUTION_ROLE_ARN` | ECS task execution role ARN |
-| `ECS_TASK_ROLE_ARN` | ECS task role ARN |
-| `DATABASE_SECRET_ARN` | Secrets Manager ARN containing the PostgreSQL connection string |
-| `FRONTEND_URL` | `https://your-domain.example` |
-| `VITE_API_BASE_URL` | Public HTTPS API URL |
-| `VITE_GOOGLE_MAPS_API_KEY` | Browser-restricted Google Maps key |
-| `FRONTEND_BUCKET` | Public CloudFront-backed S3 bucket name |
-| `CLOUDFRONT_DISTRIBUTION_ID` | CloudFront distribution ID |
-
-## Required AWS resources
-
-- ECR repository named `carlease-api`
-- ECS Fargate cluster and service named according to the secrets above
-- Application Load Balancer health check path `/health`
-- RDS PostgreSQL database
-- Secrets Manager database secret
-- S3 bucket for the React build
-- CloudFront distribution using the S3 origin
-- ACM certificate and Route 53 DNS records
-
-## Database secret value
-
-Store a single Npgsql connection string in Secrets Manager:
+The approved branch promotion model is:
 
 ```text
-Host=your-rds-host;Port=5432;Database=carlease;Username=carlease;Password=your-password
+feature/* -> develop -> nonprod -> main -> production
 ```
 
-## GitHub OIDC setup
+- Pull requests into `develop` run backend and frontend CI.
+- A merge to `develop` builds and publishes an immutable ECR image, then deploys it to nonprod when the `NONPROD_DEPLOY_ENABLED` environment variable is `true`.
+- After nonprod validation, a pull request from `develop` to `main` promotes the same immutable ECR image to production after the production GitHub Environment approval. The production workflow runs on the resulting main-branch update and verifies that the commit is associated with a merged PR from `develop`.
+- Database migrations remain a separate, reviewed operation.
 
-The IAM role configured by `AWS_ROLE_ARN` must trust `token.actions.githubusercontent.com` and restrict access to this repository and its `main` branch.
+See [CICD-GITHUB-FLOW.md](CICD-GITHUB-FLOW.md) for workflow triggers, GitHub configuration and release steps.
 
-Required AWS role capabilities include ECR push/read, ECS task and service deployment, CloudFront invalidation, and S3 synchronization.
+## AWS resources used by the workflows
 
-## Database migrations
+- Region: `ap-southeast-2`
+- Account: `996661624843`
+- ECR repository: `carlease-api`
+- ECS cluster: `carlease-cluster`
+- Non-production ECS service: `carlease-api-nonprod`
+- Production ECS service: `carlease-api-prod`
+- ECS task execution role: `arn:aws:iam::996661624843:role/carlease/carlease-ecs-task-execution-role`
+- ECS application task role: `arn:aws:iam::996661624843:role/carlease/carlease-api-task-role`
 
-The pipeline currently deploys the API but does not automatically migrate PostgreSQL. Before the first deployment, generate and apply the EF Core migration using an authorized administration environment or a separate ECS migration task.
+Task definitions:
+- `ecs/task-definition-nonprod.json`
+- `ecs/task-definition-production.json`
 
-Google Maps keys and React API URLs are embedded into the frontend bundle and are visible to browsers; restrict the Maps key by domain and use HTTPS in production.
+Both task definitions use Fargate, `awsvpc`, Linux X86_64 and container port 8080. The API exposes `/health`.
+
+## GitHub Actions secrets and environments
+
+Create GitHub Environments named `nonprod` and `production`.
+
+### Repository-level secret
+
+| Secret | Purpose |
+|---|---|
+| `AWS_PUBLISH_ROLE_ARN` | OIDC role used to push immutable images to ECR |
+
+The publisher role's OIDC trust policy must allow:
+
+```text
+repo:mdshahidkamal/carlease:ref:refs/heads/develop
+```
+
+### nonprod environment
+
+Secrets:
+- `AWS_NONPROD_ROLE_ARN`
+- `DATABASE_SECRET_ARN`
+
+Variables:
+- `NONPROD_DEPLOY_ENABLED` — set to `true` only after nonprod is ready
+- `FRONTEND_URL`
+
+### production environment
+
+Secrets:
+- `AWS_PRODUCTION_ROLE_ARN`
+- `DATABASE_SECRET_ARN`
+
+Variables:
+- `DB_HOST`
+- `DB_NAME`
+- `DB_PORT` (optional; defaults to 5432)
+- `FRONTEND_URL`
+
+Configure required reviewers for the production Environment. The production OIDC subject is:
+
+```text
+repo:mdshahidkamal/carlease:environment:production
+```
+
+The nonprod deploy role's OIDC subject is:
+
+```text
+repo:mdshahidkamal/carlease:environment:nonprod
+```
+
+Ensure each role has least-privilege ECR/ECS permissions and narrowly scoped `iam:PassRole` permissions for the CarLease ECS task roles.
+
+## Database credentials
+
+The GitHub Environment secret `DATABASE_SECRET_ARN` must identify an AWS Secrets Manager JSON secret with `username` and `password` keys. ECS injects those JSON keys as `DB_USERNAME` and `DB_PASSWORD`.
+
+The database host, database name and port are provided as task environment variables. The ECS task execution role must be allowed to read the relevant Secrets Manager secret and use its KMS key if customer-managed encryption is configured.
+
+Never commit credentials, connection strings or secret values to Git.
+
+## Database migration controls
+
+The deployment workflows do not run EF Core migrations. For schema changes, generate and review the migration, back up the database, test the migration, and apply it through an authorized database administration process before deploying a compatible API version.
+
+## Infrastructure boundary
+
+The workflows deploy application images and ECS task definitions. They do not create or change:
+- RDS databases or PostgreSQL schemas
+- Secrets Manager secrets or secret values
+- IAM roles or OIDC trust policies
+- ECS clusters, VPCs, subnets or security groups
+- Application Load Balancers, listeners or target groups
+- DNS records or TLS certificates
+
+These AWS resources remain independently managed. Validate their readiness before setting `NONPROD_DEPLOY_ENABLED=true) or merging a production release.

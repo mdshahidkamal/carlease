@@ -449,14 +449,11 @@
   border-color: #d92735;
   box-shadow: 0 0 0 3px rgba(217, 39, 53, .16);
 }
-.place-field {
-  min-width: 0;
-}
-.place-field gmp-place-autocomplete,
-.place-autocomplete {
-  width: 100%;
-  min-height: 44px;
-  border-radius: 10px;
+.map-search-error {
+  margin: 8px 0 0;
+  color: #ff858c;
+  font-size: 12px;
+  line-height: 1.45;
 }
 .vehicle-grid {
   display: grid;

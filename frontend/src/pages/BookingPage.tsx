@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 
-interface PlaceValue { placeId: string; latitude: number | null; longitude: number | null }
+interface PlaceValue { address: string; placeId: string; latitude: number | null; longitude: number | null }
 
 declare global {
-    interface Window { google?: any }
+    interface Window { google?: any; gm_authFailure?: () => void }
 }
 
 const vehicles = [
@@ -17,56 +17,113 @@ const vehicles = [
 
 const TODAY = new Date().toLocaleDateString('en-CA')
 const CURRENT_YEAR = new Date().getFullYear()
+const MAPS_UNAVAILABLE_MESSAGE = 'Google location search is not configured. Add VITE_GOOGLE_MAPS_API_KEY to frontend/.env.local and restart the frontend.'
+const MAPS_AUTH_ERROR_MESSAGE = 'Google rejected the Maps API key. Check that Maps JavaScript API and Places API (New) are enabled, billing is active, and the website referrer is allowed (for local testing, http://localhost:5173/*).'
 
 export default function BookingPage() {
     const [vehicle, setVehicle] = useState('Executive Sedan')
     const [passengers, setPassengers] = useState(1)
     const [status, setStatus] = useState<{ type: 'idle' | 'success' | 'error'; text: string }>({ type: 'idle', text: '' })
-    const [pickupPlace, setPickupPlace] = useState<PlaceValue>({ placeId: '', latitude: null, longitude: null })
-    const [dropoffPlace, setDropoffPlace] = useState<PlaceValue>({ placeId: '', latitude: null, longitude: null })
-    const pickupRef = useRef<HTMLDivElement>(null)
-    const dropoffRef = useRef<HTMLDivElement>(null)
+    const [mapsError, setMapsError] = useState(() => import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ? '' : MAPS_UNAVAILABLE_MESSAGE)
+    const [pickupPlace, setPickupPlace] = useState<PlaceValue>({ address: '', placeId: '', latitude: null, longitude: null })
+    const [dropoffPlace, setDropoffPlace] = useState<PlaceValue>({ address: '', placeId: '', latitude: null, longitude: null })
+    const pickupRef = useRef<HTMLInputElement>(null)
+    const dropoffRef = useRef<HTMLInputElement>(null)
+    const autocompleteInitialized = useRef(false)
     const selectedVehicle = vehicles.find((item) => item.name === vehicle) ?? vehicles[0]
 
-    async function setupPlace(container: HTMLDivElement | null, setPlace: (value: PlaceValue) => void, placeholder: string) {
-        if (!container || !window.google) return
-        container.innerHTML = ''
-        const element = new window.google.maps.places.PlaceAutocompleteElement({}) as unknown as HTMLElement
-        element.setAttribute('placeholder', placeholder)
-        element.className = 'place-autocomplete'
-        container.appendChild(element)
-        element.addEventListener('gmp-placeselect', async (event: Event) => {
-            const placeEvent = event as Event & { place?: any }
-            if (!placeEvent.place) return
-            await placeEvent.place.fetchFields({ fields: ['displayName', 'formattedAddress', 'location', 'id'] })
-            setPlace({ placeId: placeEvent.place.id ?? '', latitude: placeEvent.place.location?.lat() ?? null, longitude: placeEvent.place.location?.lng() ?? null })
+    function setupPlace(input: HTMLInputElement | null, setPlace: (value: PlaceValue) => void) {
+        const Autocomplete = window.google?.maps?.places?.Autocomplete
+        if (!input || !Autocomplete) throw new Error('The Places library did not provide the Autocomplete service.')
+        const autocomplete = new Autocomplete(input, {
+            fields: ['formatted_address', 'geometry', 'place_id', 'name'],
+        })
+        input.addEventListener('input', () => {
+            setPlace({ address: input.value, placeId: '', latitude: null, longitude: null })
+        })
+        autocomplete.addListener('place_changed', () => {
+            const place = autocomplete.getPlace()
+            const location = place.geometry?.location
+            setPlace({
+                address: place.formatted_address ?? place.name ?? input.value,
+                placeId: place.place_id ?? '',
+                latitude: location?.lat() ?? null,
+                longitude: location?.lng() ?? null,
+            })
         })
     }
 
     async function setupPlaceAutocomplete() {
-        if (!window.google?.maps?.places) return
+        if (!window.google?.maps?.importLibrary) throw new Error('Google Maps JavaScript API did not load.')
         await window.google.maps.importLibrary('places')
-        // The web component is dynamically mounted so it remains usable on mobile browsers.
-        setupPlace(pickupRef.current, setPickupPlace, 'Search pickup address or place')
-        setupPlace(dropoffRef.current, setDropoffPlace, 'Search destination address or place')
+        if (autocompleteInitialized.current) return
+        setupPlace(pickupRef.current, setPickupPlace)
+        setupPlace(dropoffRef.current, setDropoffPlace)
+        autocompleteInitialized.current = true
     }
 
     useEffect(() => {
-        const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-        if (!key) return
+        let active = true
+        const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim()
+        if (!key) return () => { active = false }
+
+        const previousAuthFailure = window.gm_authFailure
+        const handleAuthFailure = () => {
+            if (active) setMapsError(MAPS_AUTH_ERROR_MESSAGE)
+        }
+        window.gm_authFailure = handleAuthFailure
+        const cleanup = () => {
+            active = false
+            if (window.gm_authFailure === handleAuthFailure) window.gm_authFailure = previousAuthFailure
+        }
+        const initialize = () => {
+            void setupPlaceAutocomplete().then(() => {
+                if (active) setMapsError('')
+            }).catch((error: unknown) => {
+                if (!active) return
+                const details = error instanceof Error ? error.message.replace(key, '[redacted]') : 'Unknown initialization error'
+                setMapsError(`Google Places could not initialize: ${details} Check the browser console for the Google Maps error code and verify API key restrictions, enabled APIs, and billing.`)
+            })
+        }
+        if (window.google?.maps?.importLibrary) {
+            initialize()
+            return cleanup
+        }
+
         const id = 'royal-limo-maps'
-        if (document.getElementById(id)) return
-        const script = document.createElement('script')
-        script.id = id
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&loading=async`
-        script.async = true
-        script.onload = () => setupPlaceAutocomplete()
-        document.head.appendChild(script)
+        let script = document.getElementById(id) as HTMLScriptElement | null
+        if (!script) {
+            script = document.createElement('script')
+            script.id = id
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=places&loading=async`
+            script.async = true
+        }
+        const handleLoad = () => {
+            script?.setAttribute('data-loaded', 'true')
+            initialize()
+        }
+        const handleError = () => {
+            if (active) setMapsError('The Google Maps script could not be downloaded. Check your internet connection, browser extensions, and network restrictions.')
+        }
+        script.addEventListener('load', handleLoad, { once: true })
+        script.addEventListener('error', handleError, { once: true })
+        if (script.dataset.loaded === 'true') handleLoad()
+        else if (!script.isConnected) document.head.appendChild(script)
+
+        return () => {
+            cleanup()
+            script?.removeEventListener('load', handleLoad)
+            script?.removeEventListener('error', handleError)
+        }
     }, [])
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault()
         setStatus({ type: 'idle', text: '' })
+        if (!pickupPlace.address.trim() || !dropoffPlace.address.trim()) {
+            setStatus({ type: 'error', text: 'Enter both a pickup and destination location before submitting.' })
+            return
+        }
         const form = new FormData(event.currentTarget)
         const payload = Object.fromEntries(form.entries())
         try {
@@ -97,9 +154,10 @@ export default function BookingPage() {
             event.currentTarget.reset()
             setVehicle('Executive Sedan')
             setPassengers(1)
-            pickupRef.current?.replaceChildren()
-            dropoffRef.current?.replaceChildren()
-            void setupPlaceAutocomplete()
+            setPickupPlace({ address: '', placeId: '', latitude: null, longitude: null })
+            setDropoffPlace({ address: '', placeId: '', latitude: null, longitude: null })
+            if (pickupRef.current) pickupRef.current.value = ''
+            if (dropoffRef.current) dropoffRef.current.value = ''
         } catch (error) {
             setStatus({ type: 'error', text: error instanceof Error ? error.message : 'Booking submission failed.' })
         }
@@ -112,9 +170,10 @@ export default function BookingPage() {
             </section>
             <form className="booking-card" onSubmit={handleSubmit}>
                 <section><h2><span>1</span>Journey details</h2>
-                    <div className="grid"><div className="field full"><label>From / Pickup location *</label><div ref={pickupRef} className="place-field"><input name="pickup" required placeholder="Search pickup address or place" /></div></div>
-                        <div className="field full"><label>To / Drop-off location *</label><div ref={dropoffRef} className="place-field"><input name="dropoff" required placeholder="Search destination address or place" /></div></div>
+                    <div className="grid"><div className="field full"><label htmlFor="pickup-location">From / Pickup location *</label><input ref={pickupRef} id="pickup-location" name="pickup" type="text" autoComplete="off" required placeholder="Search pickup address or place" onChange={(event) => setPickupPlace({ address: event.target.value, placeId: '', latitude: null, longitude: null })} /></div>
+                        <div className="field full"><label htmlFor="dropoff-location">To / Drop-off location *</label><input ref={dropoffRef} id="dropoff-location" name="dropoff" type="text" autoComplete="off" required placeholder="Search destination address or place" onChange={(event) => setDropoffPlace({ address: event.target.value, placeId: '', latitude: null, longitude: null })} /></div>
                         <div className="field"><label>Date *</label><input name="pickupDate" type="date" min={TODAY} required /></div><div className="field"><label>Time *</label><input name="pickupTime" type="time" required /></div></div>
+                    {mapsError && <p className="map-search-error" role="alert">{mapsError}</p>}
                 </section>
                 <section><h2><span>2</span>Select your vehicle</h2><div className="vehicle-grid">{vehicles.map((item) => <label className={`vehicle-card ${vehicle === item.name ? 'selected' : ''}`} key={item.name}><input type="radio" name="vehicleType" value={item.name} checked={vehicle === item.name} onChange={() => {
                     setVehicle(item.name)

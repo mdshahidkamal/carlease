@@ -17,17 +17,17 @@ export default function HomePage() {
     <main className="public-home">
       <div className="public-home-hero" role="img" aria-label="Luxury stretch limousine in a city at night" />
       <header className="public-home-intro">
-        <div className="public-home-actions public-home-hero-actions">
-          <a className="public-home-button public-home-call" href="tel:+14049187449">☎ Call</a>
-          <Link className="public-home-button public-home-primary" to="/booking">Book a Ride</Link>
-          <a className="public-home-button public-home-secondary" href="/assets/red-line-luxe-contact.vcf" download="Red-Line-Luxe-Contact.vcf">♙ Save Contact</a>
-        </div>
         <h1>Royal Limo Service</h1>
         <p className="public-home-tagline">Luxury Chauffeur &amp; Limousine Services</p>
         <p className="public-home-description">
           Travel in comfort and style. Royal Limo Service provides premium chauffeured transportation
           for airport transfers, special occasions, business travel and memorable nights out.
         </p>
+        <div className="public-home-actions public-home-hero-actions">
+          <a className="public-home-button public-home-call" href="tel:+14049187449">☎ Call</a>
+          <Link className="public-home-button public-home-primary" to="/booking">Book a Ride</Link>
+          <a className="public-home-button public-home-secondary" href="/assets/red-line-luxe-contact.vcf" download="Red-Line-Luxe-Contact.vcf">♙ Save Contact</a>
+        </div>
       </header>
 
       <section className="public-home-section" aria-labelledby="public-services-title">

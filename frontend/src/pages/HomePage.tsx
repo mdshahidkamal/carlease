@@ -17,7 +17,11 @@ export default function HomePage() {
     <main className="public-home">
       <div className="public-home-hero" role="img" aria-label="Luxury stretch limousine in a city at night" />
       <header className="public-home-intro">
-        <span className="public-home-eyebrow">Your Journey, Elevated</span>
+        <div className="public-home-actions public-home-hero-actions">
+          <a className="public-home-button public-home-call" href="tel:+14049187449">☎ Call</a>
+          <Link className="public-home-button public-home-primary" to="/booking">Book a Ride</Link>
+          <a className="public-home-button public-home-secondary" href="/assets/red-line-luxe-contact.vcf" download="Red-Line-Luxe-Contact.vcf">♙ Save Contact</a>
+        </div>
         <h1>Royal Limo Service</h1>
         <p className="public-home-tagline">Luxury Chauffeur &amp; Limousine Services</p>
         <p className="public-home-description">
@@ -59,11 +63,6 @@ export default function HomePage() {
         <div className="public-home-contact-row">
           <span className="public-home-icon" aria-hidden="true">⌖</span>
           <span><small>Service area</small>Atlanta, Georgia</span>
-        </div>
-        <div className="public-home-actions">
-          <a className="public-home-button public-home-primary" href="tel:+14049187449">☎ Call</a>
-          <Link className="public-home-button public-home-secondary" to="/booking">Book a ride</Link>
-          <a className="public-home-button public-home-secondary" href="/assets/red-line-luxe-contact.vcf" download="Red-Line-Luxe-Contact.vcf">♙ Save Contact</a>
         </div>
       </section>
 

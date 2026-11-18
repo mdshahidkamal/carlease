@@ -449,6 +449,44 @@
   border-color: #d92735;
   box-shadow: 0 0 0 3px rgba(217, 39, 53, .16);
 }
+.booking-card .booking-date-input {
+  min-height: 48px;
+  color-scheme: dark;
+  accent-color: #d92735;
+  cursor: pointer;
+}
+.pickup-time-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.pickup-time-control input[type='number'] {
+  min-width: 0;
+  padding: 10px 6px;
+  text-align: center;
+}
+.pickup-time-control input[type='number']::-webkit-inner-spin-button,
+.pickup-time-control input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+.pickup-time-control select {
+  min-width: 62px;
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 10px;
+  background: #141519;
+  color: #f8f8f8;
+  font: inherit;
+  font-size: 16px;
+}
+.pickup-time-control input:focus,
+.pickup-time-control select:focus {
+  border-color: #d92735;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(217, 39, 53, .16);
+}
 .place-field {
   min-width: 0;
 }

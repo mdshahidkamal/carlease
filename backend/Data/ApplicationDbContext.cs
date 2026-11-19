@@ -9,6 +9,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<Customer> Customers => Set<Customer>();
 
+    public DbSet<AuthOtpChallenge> AuthOtpChallenges => Set<AuthOtpChallenge>();
+
+    public DbSet<CustomerSession> CustomerSessions => Set<CustomerSession>();
+
     public DbSet<SdlcDemoRecord> SdlcDemoRecords => Set<SdlcDemoRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -33,6 +37,25 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         customer.Property(x => x.Email).HasMaxLength(160);
         customer.HasIndex(x => x.Phone).IsUnique();
         customer.HasIndex(x => x.Email).IsUnique().HasFilter("\"Email\" IS NOT NULL");
+
+        var otpChallenge = modelBuilder.Entity<AuthOtpChallenge>();
+        otpChallenge.HasKey(x => x.Id);
+        otpChallenge.Property(x => x.Email).HasMaxLength(160).IsRequired();
+        otpChallenge.Property(x => x.Purpose).HasMaxLength(16).IsRequired();
+        otpChallenge.Property(x => x.OtpHash).IsRequired();
+        otpChallenge.Property(x => x.RegistrationName).HasMaxLength(120);
+        otpChallenge.Property(x => x.RegistrationPhone).HasMaxLength(30);
+        otpChallenge.HasIndex(x => new { x.Email, x.RequestedAtUtc });
+
+        var customerSession = modelBuilder.Entity<CustomerSession>();
+        customerSession.HasKey(x => x.Id);
+        customerSession.Property(x => x.TokenHash).IsRequired();
+        customerSession.HasIndex(x => x.TokenHash).IsUnique();
+        customerSession.HasIndex(x => new { x.CustomerId, x.ExpiresAtUtc });
+        customerSession.HasOne(x => x.Customer)
+            .WithMany()
+            .HasForeignKey(x => x.CustomerId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         var sdlcDemoRecord = modelBuilder.Entity<SdlcDemoRecord>();
         sdlcDemoRecord.HasNoKey();

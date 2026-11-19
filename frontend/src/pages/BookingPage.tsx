@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../auth/useAuth'
+import { authApiBaseUrl } from '../auth/api'
 
 const vehicles = [
     { name: 'Executive Sedan', capacity: 3, image: 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=640&q=80' },
@@ -13,6 +15,8 @@ const TODAY = new Date().toLocaleDateString('en-CA')
 const CURRENT_YEAR = new Date().getFullYear()
 
 export default function BookingPage() {
+    const { customer, setCustomer } = useAuth()
+    const navigate = useNavigate()
     const [vehicle, setVehicle] = useState('Executive Sedan')
     const [passengers, setPassengers] = useState(1)
     const [pickupHour, setPickupHour] = useState('')
@@ -57,6 +61,7 @@ export default function BookingPage() {
                     kidsCount: Number(payload.kidsCount || 0),
                     baggageCount: Number(payload.baggageCount || 0),
                 }),
+                credentials: 'include',
             })
             const result = await response.json().catch(() => ({})) as { message?: string; detail?: string; title?: string; errors?: Record<string, string[] | string>; bookingReference?: string; status?: string }
             const validationErrors = Object.values(result.errors ?? {}).flatMap((messages) => Array.isArray(messages) ? messages : [messages])
@@ -78,7 +83,16 @@ export default function BookingPage() {
     return (
         <main className="booking-shell">
             <section className="booking-hero">
-                <nav className="booking-top"><Link className="brand" to="/"><span className="brand-mark">R</span><span><b>Royal Limo Service</b><small>Luxury Chauffeur Services</small></span></Link><Link className="back-link" to="/">← Home</Link></nav>
+                <nav className="booking-top"><Link className="brand" to="/"><span className="brand-mark">R</span><span><b>Royal Limo Service</b><small>Luxury Chauffeur Services</small></span></Link><span className="booking-account">{customer?.name}</span><button className="back-link booking-signout" type="button" onClick={async () => {
+                    try {
+                        const response = await fetch(`${authApiBaseUrl}/api/auth/logout`, { method: 'POST', credentials: 'include' })
+                        if (!response.ok) throw new Error(`Could not sign out (HTTP ${response.status}).`)
+                        setCustomer(null)
+                        navigate('/', { replace: true })
+                    } catch (error) {
+                        setStatus({ type: 'error', text: error instanceof Error ? error.message : 'Could not sign out.' })
+                    }
+                }}>Sign out</button></nav>
             </section>
             <form className="booking-card" onSubmit={handleSubmit}>
                 <section><h2><span>1</span>Journey details</h2>
@@ -106,7 +120,7 @@ export default function BookingPage() {
                     setPassengers((current) => Math.min(current, item.capacity))
                 }} /><img src={item.image} alt={item.name} /><div><strong>{item.name}</strong><small>Maximum {item.capacity} passengers</small>{vehicle === item.name && <b>✓ Selected</b>}</div></label>)}</div></section>
                 <section><h2><span>3</span>Passengers & preferences</h2><div className="count-grid"><div><label>Passenger count *</label><input name="passengerCount" type="number" min="1" max={selectedVehicle.capacity} value={passengers} onChange={(event) => setPassengers(Number(event.target.value))} required /></div><div><label>Children</label><input name="kidsCount" type="number" min="0" max="12" defaultValue="0" /></div><div><label>Baggage count</label><input name="baggageCount" type="number" min="0" max="30" defaultValue="0" /></div></div><div className="field preference"><label>Preference, if any</label><textarea name="preferences" maxLength={1500} placeholder="Child seat, luggage notes, preferred route or additional stop..." /></div></section>
-                <section><h2><span>4</span>My Details</h2><div className="grid"><div className="field full"><label>Name *</label><input name="customerName" required autoComplete="name" maxLength={120} placeholder="Your full name" /></div><div className="field full"><label>Phone number *</label><input name="phone" type="tel" required autoComplete="tel" maxLength={30} placeholder="+1 (___) ___-____" /></div><div className="field full"><label>Email address <small>(optional)</small></label><input name="email" type="email" autoComplete="email" placeholder="you@example.com" /></div></div></section>
+                <p className="booking-customer-note">Booking for {customer?.name} · {customer?.email}</p>
                 <div className="submit"><button type="submit">Book My Cab →</button><p>Submitting creates a booking request. Confirmation is provided by Royal Limo Service.</p></div>
                 {status.type !== 'idle' && <div className={`notice ${status.type}`}>{status.text}</div>}
             </form>

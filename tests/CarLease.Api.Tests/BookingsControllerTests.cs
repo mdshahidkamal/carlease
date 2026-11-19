@@ -1,6 +1,8 @@
 using CarLease.Api.Controllers;
 using CarLease.Api.Data;
 using CarLease.Api.DTOs;
+using CarLease.Api.Models;
+using CarLease.Api.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
@@ -12,70 +14,73 @@ namespace CarLease.Api.Tests;
 public class BookingsControllerTests
 {
     [Fact]
-    public async Task Create_ReusesCustomer_WhenPhoneAndEmailMatch()
+    public async Task Create_ReturnsUnauthorized_WhenNoSessionCookieIsSent()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
-        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlite(connection)
-            .Options;
+        await using var db = CreateDatabase(connection);
+        var controller = CreateController(db);
 
-        await using var db = new ApplicationDbContext(options);
-        await db.Database.EnsureCreatedAsync();
-        var controller = new BookingsController(db);
+        var result = await controller.Create(CreateRequest(), CancellationToken.None);
 
-        var firstResponse = await controller.Create(CreateRequest("Alex", "+1 404 555 0100", "Alex@Example.com"), CancellationToken.None);
-        var secondResponse = await controller.Create(CreateRequest("Alex Updated", "+1 404 555 0100", "alex@example.com"), CancellationToken.None);
-
-        var firstResult = Assert.IsType<ObjectResult>(firstResponse.Result);
-        var secondResult = Assert.IsType<ObjectResult>(secondResponse.Result);
-        Assert.Equal(StatusCodes.Status201Created, firstResult.StatusCode);
-        Assert.Equal(StatusCodes.Status201Created, secondResult.StatusCode);
-        var customer = Assert.Single(await db.Customers.ToListAsync());
-        var bookings = await db.Bookings.OrderBy(x => x.CreatedAtUtc).ToListAsync();
-        Assert.Equal(2, bookings.Count);
-        Assert.All(bookings, booking => Assert.Equal(customer.Id, booking.CustomerId));
-        var responseBody = Assert.IsType<CreateBookingResponse>(secondResult.Value);
-        Assert.Equal(bookings[1].Id, responseBody.BookingId);
-        Assert.Equal(bookings[1].BookingReference, responseBody.BookingReference);
-        Assert.Equal("PENDING_REVIEW", responseBody.Status);
-        Assert.All(bookings, booking => Assert.Equal("PENDING_REVIEW", booking.Status));
-        Assert.Equal("Alex Updated", customer.CustomerName);
-        Assert.Equal("alex@example.com", customer.Email);
+        Assert.IsType<UnauthorizedObjectResult>(result.Result);
+        Assert.Empty(await db.Bookings.ToListAsync());
     }
 
     [Fact]
-    public async Task Create_ReturnsConflict_WhenPhoneAndEmailIdentifyDifferentCustomers()
+    public async Task Create_AssociatesBookingWithAuthenticatedCustomer()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var customer = new Customer { CustomerName = "Alex", Email = "alex@example.com", Phone = "+1 404 555 0100" };
+        const string sessionToken = "test-session-token";
+        db.CustomerSessions.Add(new CustomerSession
+        {
+            Customer = customer,
+            TokenHash = AuthTokenHash.HashSessionToken(sessionToken),
+            ExpiresAtUtc = DateTime.UtcNow.AddDays(1)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db);
+        controller.ControllerContext.HttpContext.Request.Headers.Cookie =
+            $"{AuthController.SessionCookieName}={sessionToken}";
+
+        var result = await controller.Create(CreateRequest(), CancellationToken.None);
+
+        var response = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status201Created, response.StatusCode);
+        var booking = Assert.Single(await db.Bookings.ToListAsync());
+        Assert.Equal(customer.Id, booking.CustomerId);
+        Assert.Equal("alex@example.com", (await db.Customers.SingleAsync()).Email);
+        Assert.Equal("PENDING_REVIEW", booking.Status);
+    }
+
+    private static ApplicationDbContext CreateDatabase(SqliteConnection connection)
+    {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseSqlite(connection)
             .Options;
-
-        await using var db = new ApplicationDbContext(options);
-        await db.Database.EnsureCreatedAsync();
-        var controller = new BookingsController(db);
-
-        await controller.Create(CreateRequest("First Customer", "111", "first@example.com"), CancellationToken.None);
-        await controller.Create(CreateRequest("Second Customer", "222", "second@example.com"), CancellationToken.None);
-        var result = await controller.Create(CreateRequest("Mismatch", "111", "second@example.com"), CancellationToken.None);
-
-        Assert.IsType<ConflictObjectResult>(result.Result);
-        Assert.Equal(2, await db.Bookings.CountAsync());
-        Assert.Equal(2, await db.Customers.CountAsync());
+        var db = new ApplicationDbContext(options);
+        db.Database.EnsureCreated();
+        return db;
     }
 
-    private static CreateBookingRequest CreateRequest(string name, string phone, string? email) => new()
+    private static BookingsController CreateController(ApplicationDbContext db)
+    {
+        var controller = new BookingsController(db);
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+        return controller;
+    }
+
+    private static CreateBookingRequest CreateRequest() => new()
     {
         Pickup = "Pickup address",
         Dropoff = "Dropoff address",
         PickupDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),
         PickupTime = new TimeOnly(12, 0),
         VehicleType = "Executive Sedan",
-        PassengerCount = 1,
-        CustomerName = name,
-        Phone = phone,
-        Email = email
+        PassengerCount = 1
     };
 }

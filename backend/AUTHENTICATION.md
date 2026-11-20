@@ -30,7 +30,7 @@ The API implements email OTP verification by default: customers request login or
 
 Configure these values outside source control:
 
-- `Auth__OtpPepper`: a randomly generated secret with at least 32 characters. Keep it stable while active OTP challenges exist; store it in AWS Secrets Manager in ECS and .NET User Secrets locally. The ECS deploy workflows read it from `AUTH_OTP_PEPPER_SECRET_ARN`.
+- `Auth__OtpPepper`: required only when email OTP verification is enabled. Use a randomly generated secret with at least 32 characters; keep it stable while active OTP challenges exist. Store it in AWS Secrets Manager for ECS and .NET User Secrets locally. Nonprod ECS deployments inject it when `AUTH_OTP_PEPPER_SECRET_ARN` is configured.
 - `Auth__EmailFrom`: an email identity verified in Amazon SES in the configured region. ECS workflows read the sender from the environment variable `AUTH_EMAIL_FROM`.
 - `AWS_REGION`: SES region, for example `ap-southeast-2`.
 - Existing database settings (`ConnectionStrings__DefaultConnection` locally or the existing `DB_*` settings in ECS).

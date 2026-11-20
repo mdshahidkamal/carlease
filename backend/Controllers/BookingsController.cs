@@ -29,20 +29,44 @@ public class BookingsController(ApplicationDbContext db) : ControllerBase
         if (request.PassengerCount > capacity)
             return BadRequest(new { message = $"The selected vehicle supports no more than {capacity} passengers." });
 
+        var phone = request.Phone.Trim();
+        var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim().ToLowerInvariant();
+        var customerByPhone = await db.Customers.SingleOrDefaultAsync(x => x.Phone == phone, cancellationToken);
+        var customerByEmail = email is null
+            ? null
+            : await db.Customers.SingleOrDefaultAsync(x => x.Email == email, cancellationToken);
+
+        if (customerByPhone is not null && customerByEmail is not null && customerByPhone.Id != customerByEmail.Id)
+            return Conflict(new { message = "The provided phone number and email belong to different customer records." });
+
+        var customer = customerByEmail ?? customerByPhone;
+        if (customer is null)
+        {
+            customer = new Customer { CustomerName = request.CustomerName.Trim(), Phone = phone, Email = email };
+            db.Customers.Add(customer);
+        }
+        else
+        {
+            customer.CustomerName = request.CustomerName.Trim();
+            customer.Phone = phone;
+            if (email is not null)
+                customer.Email = email;
+        }
+
         var booking = new Booking
         {
-            BookingReference = CreateReference(), Pickup = request.Pickup.Trim(), PickupPlaceId = request.PickupPlaceId,
+            BookingReference = CreateReference(), Customer = customer, Pickup = request.Pickup.Trim(), PickupPlaceId = request.PickupPlaceId,
             PickupLatitude = request.PickupLatitude, PickupLongitude = request.PickupLongitude,
             Dropoff = request.Dropoff.Trim(), DropoffPlaceId = request.DropoffPlaceId,
             DropoffLatitude = request.DropoffLatitude, DropoffLongitude = request.DropoffLongitude,
             PickupDateTime = pickupDateTime, VehicleType = request.VehicleType,
             PassengerCount = request.PassengerCount, KidsCount = request.KidsCount, BaggageCount = request.BaggageCount,
-            Preferences = request.Preferences?.Trim(), CustomerName = request.CustomerName.Trim(), Phone = request.Phone.Trim(), Email = request.Email?.Trim()
+            Preferences = request.Preferences?.Trim()
         };
 
         db.Bookings.Add(booking);
         await db.SaveChangesAsync(cancellationToken);
-        return StatusCode(StatusCodes.Status201Created, new CreateBookingResponse(booking.Id, booking.BookingReference));
+        return StatusCode(StatusCodes.Status201Created, new CreateBookingResponse(booking.Id, booking.BookingReference, booking.Status));
     }
 
     private static string CreateReference()

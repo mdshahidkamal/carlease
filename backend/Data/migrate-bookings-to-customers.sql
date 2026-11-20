@@ -36,7 +36,7 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'Migration stopped: the same email is associated with multiple phone numbers. Resolve duplicate customer identities before retrying.';
     END IF;
-END $$;
+END $migration$;
 
 INSERT INTO "Customers" ("Id", "CustomerName", "Phone", "Email", "CreatedAtUtc")
 SELECT

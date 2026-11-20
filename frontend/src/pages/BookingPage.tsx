@@ -53,6 +53,11 @@ function BookingForm({ useGoogle, mapsError }: { useGoogle: boolean; mapsError: 
         const formElement = event.currentTarget
         const form = new FormData(formElement)
         const payload = Object.fromEntries(form.entries())
+        const pickupTime = String(payload.pickupTime ?? '')
+        if (!/^\d{2}:\d{2}$/.test(pickupTime)) {
+            setStatus({ type: 'error', text: 'Enter a valid pickup time.' })
+            return
+        }
         try {
             const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5292').replace(/\/+$/, '')
             const response = await fetch(`${apiBaseUrl}/api/bookings`, {
@@ -68,16 +73,33 @@ function BookingForm({ useGoogle, mapsError }: { useGoogle: boolean; mapsError: 
                     dropoffLatitude: dropoffPlace.latitude,
                     dropoffLongitude: dropoffPlace.longitude,
                     pickupDate: payload.pickupDate,
-                    pickupTime: payload.pickupTime,
+                    pickupTime: `${pickupTime}:00`,
                     vehicleType: vehicle,
                     passengerCount: Number(payload.passengerCount),
                     kidsCount: Number(payload.kidsCount || 0),
                     baggageCount: Number(payload.baggageCount || 0),
                 }),
             })
-            const result = await response.json().catch(() => ({})) as { message?: string; bookingReference?: string }
-            if (!response.ok) throw new Error(result.message ?? 'We could not submit your booking.')
-            setStatus({ type: 'success', text: `Booking registered${result.bookingReference ? ` — ${result.bookingReference}` : '.'}` })
+            const result = await response.json().catch(() => ({})) as {
+                message?: string
+                detail?: string
+                title?: string
+                errors?: Record<string, string[] | string>
+                bookingReference?: string
+                status?: string
+            }
+            const validationErrors = Object.values(result.errors ?? {}).flatMap((messages) =>
+                Array.isArray(messages) ? messages : [messages],
+            )
+            const apiError = result.message || result.detail || validationErrors.join(' ') || result.title
+            if (!response.ok) throw new Error(apiError ?? `We could not submit your booking (HTTP ${response.status}).`)
+            if (!result.bookingReference || !result.status) {
+                throw new Error('Booking was submitted, but confirmation details are unavailable.')
+            }
+            setStatus({
+                type: 'success',
+                text: `Booking reference: ${result.bookingReference} | Status: ${result.status}`,
+            })
             formElement.reset()
             setVehicle('Executive Sedan')
             setPassengers(1)

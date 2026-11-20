@@ -1,4 +1,8 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../auth/useAuth'
+import { authApiBaseUrl } from '../auth/api'
+import AuthModal from '../auth/AuthModal'
 import './HomePage.css'
 
 const CURRENT_YEAR = 2026
@@ -13,9 +17,33 @@ const services = [
 ]
 
 export default function HomePage() {
+  const { customer, loading, sessionError, setCustomer, setSessionError } = useAuth()
+  const location = useLocation()
+  const [authOpen, setAuthOpen] = useState(() => Boolean(location.state?.openAuth))
+  const [signOutError, setSignOutError] = useState('')
+  const navigate = useNavigate()
+
+  function bookRide() {
+    if (customer) navigate('/booking')
+    else setAuthOpen(true)
+  }
+
+  async function signOut() {
+    setSignOutError('')
+    try {
+      const response = await fetch(`${authApiBaseUrl}/api/auth/logout`, { method: 'POST', credentials: 'include' })
+      if (!response.ok) throw new Error(`Could not sign out (HTTP ${response.status}).`)
+      setCustomer(null)
+    } catch (error) {
+      setSignOutError(error instanceof Error ? error.message : 'Could not sign out.')
+    }
+  }
+
   return (
+    <>
     <main className="public-home">
       <div className="public-home-hero" role="img" aria-label="Luxury stretch limousine in a city at night" />
+      {customer && <div className="public-home-account"><span>Welcome {customer.name}</span><button type="button" onClick={signOut}>Sign out</button></div>}
       <header className="public-home-intro">
         <h1>Royal Limo Service</h1>
         <p className="public-home-tagline">Luxury Chauffeur &amp; Limousine Services</p>
@@ -25,9 +53,11 @@ export default function HomePage() {
         </p>
         <div className="public-home-actions public-home-hero-actions">
           <a className="public-home-button public-home-call" href="tel:+14049187449">☎ Call</a>
-          <Link className="public-home-button public-home-primary" to="/booking">Book a Ride</Link>
+          <button className="public-home-button public-home-primary" type="button" onClick={bookRide} disabled={loading}>{loading ? 'Checking sign-in…' : 'Book a Ride'}</button>
           <a className="public-home-button public-home-secondary" href="/assets/red-line-luxe-contact.vcf" download="Red-Line-Luxe-Contact.vcf">♙ Save Contact</a>
         </div>
+        {sessionError && <p className="auth-message error" role="alert">{sessionError} You can still try to sign in.</p>}
+        {signOutError && <p className="auth-message error" role="alert">{signOutError}</p>}
       </header>
 
       <section className="public-home-section" aria-labelledby="public-services-title">
@@ -70,5 +100,12 @@ export default function HomePage() {
         © {CURRENT_YEAR} Royal Limo Service · Luxury Chauffeur &amp; Limousine Services
       </footer>
     </main>
+    {authOpen && <AuthModal onClose={() => setAuthOpen(false)} onSuccess={(authenticatedCustomer) => {
+      setCustomer(authenticatedCustomer)
+      setSessionError(null)
+      setAuthOpen(false)
+      navigate(location.state?.returnTo ?? '/booking', { replace: true })
+    }} />}
+    </>
   )
 }

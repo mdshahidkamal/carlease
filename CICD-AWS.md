@@ -59,18 +59,22 @@ repo:mdshahidkamal/carlease:ref:refs/heads/develop
 Secrets:
 - `AWS_NONPROD_ROLE_ARN`
 - `DATABASE_SECRET_ARN`
+- `AUTH_OTP_PEPPER_SECRET_ARN` — Secrets Manager secret containing the OTP HMAC pepper
 
 Variables:
 - `NONPROD_DEPLOY_ENABLED` — set to `true` only after nonprod is ready
 - `FRONTEND_URL`
+- `AUTH_EMAIL_FROM` — verified Amazon SES sender address
 
 ### production environment
 
 Secrets:
 - `AWS_PRODUCTION_ROLE_ARN`
 - `DATABASE_SECRET_ARN`
+- `AUTH_OTP_PEPPER_SECRET_ARN` — Secrets Manager secret containing a random OTP HMAC pepper (string value)
 
 Variables:
+- `AUTH_EMAIL_FROM` — verified Amazon SES sender address
 - `DB_HOST`
 - `DB_NAME`
 - `DB_PORT` (optional; defaults to 5432)
@@ -90,13 +94,14 @@ repo:mdshahidkamal/carlease:environment:nonprod
 
 Ensure each role has least-privilege ECR/ECS permissions and narrowly scoped `iam:PassRole` permissions for the CarLease ECS task roles.
 
-## Database credentials
+## Database and authentication secrets
 
-The GitHub Environment secret `DATABASE_SECRET_ARN` must identify an AWS Secrets Manager JSON secret with `username` and `password` keys. ECS injects those JSON keys as `DB_USERNAME` and `DB_PASSWORD`.
+The GitHub Environment secret `DATABASE_SECRET_ARN` must identify an AWS Secrets Manager JSON secret with `username` and `password` keys. ECS injects those JSON keys as `DB_USERNAME` and `DB_PASSWORD`. `AUTH_OTP_PEPPER_SECRET_ARN` must point to a separate Secrets Manager string secret containing a random OTP HMAC pepper (at least 32 characters).
 
-The database host, database name and port are provided as task environment variables. The ECS task execution role must be allowed to read the relevant Secrets Manager secret and use its KMS key if customer-managed encryption is configured.
+The database host, database name and port are provided as task environment variables. The ECS task execution role must be allowed to read the database secret, the OTP pepper secret and their KMS keys if customer-managed encryption is configured. The ECS application task role must allow `ses:SendEmail` scoped to the verified sender identity.
 
 Never commit credentials, connection strings or secret values to Git.
+
 
 ## Database migration controls
 

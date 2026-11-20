@@ -139,8 +139,9 @@ jobs:
           AWS_NONPROD_ROLE_ARN: ${{ secrets.AWS_NONPROD_ROLE_ARN }}
           DATABASE_SECRET_ARN: ${{ secrets.DATABASE_SECRET_ARN }}
           FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          AUTH_EMAIL_FROM: ${{ vars.AUTH_EMAIL_FROM }}
         run: |
-          for name in AWS_NONPROD_ROLE_ARN DATABASE_SECRET_ARN FRONTEND_URL; do
+          for name in AWS_NONPROD_ROLE_ARN DATABASE_SECRET_ARN FRONTEND_URL AUTH_EMAIL_FROM; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing nonprod environment secret/variable: $name"
               exit 1
@@ -157,7 +158,9 @@ jobs:
         env:
           IMAGE_URI: ${{ needs.publish-image.outputs.image_uri }}
           DATABASE_SECRET_ARN: ${{ secrets.DATABASE_SECRET_ARN }}
+          AUTH_OTP_PEPPER_SECRET_ARN: ${{ secrets.AUTH_OTP_PEPPER_SECRET_ARN }}
           FRONTEND_URL: ${{ vars.FRONTEND_URL }}
+          AUTH_EMAIL_FROM: ${{ vars.AUTH_EMAIL_FROM }}
         run: |
           python3 - <<'PY'
           import json
@@ -173,8 +176,11 @@ jobs:
           container = containers[0]
           container["image"] = os.environ["IMAGE_URI"]
           secret_arn = os.environ["DATABASE_SECRET_ARN"]
+          auth_pepper_arn = os.environ.get("AUTH_OTP_PEPPER_SECRET_ARN", "").strip()
           if not secret_arn.startswith("arn:aws:secretsmanager:"):
-              raise SystemExit("DATABASE_SECRET_ARN must be a Secrets Manager ARN")
+            raise SystemExit("DATABASE_SECRET_ARN must be a Secrets Manager ARN")
+          if auth_pepper_arn and not auth_pepper_arn.startswith("arn:aws:secretsmanager:"):
+            raise SystemExit("AUTH_OTP_PEPPER_SECRET_ARN must be a Secrets Manager ARN")
 
           # The secret is a JSON object with username and password keys.
           # ECS injects each key separately; application code builds the Npgsql
@@ -189,8 +195,15 @@ jobs:
                   "valueFrom": secret_arn + ":password::"
               }
           ]
+          if auth_pepper_arn:
+              container["secrets"].append({
+                  "name": "Auth__OtpPepper",
+                  "valueFrom": auth_pepper_arn
+              })
 
           environment_values = {
+              "AWS_REGION": "ap-southeast-2",
+              "Auth__EmailFrom": os.environ["AUTH_EMAIL_FROM"],
               "DB_HOST": "carlease-postgres.c3ugucioubmr.ap-southeast-2.rds.amazonaws.com",
               "DB_NAME": "carlease_nonprod",
               "DB_PORT": "5432"

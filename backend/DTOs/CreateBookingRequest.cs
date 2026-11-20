@@ -19,9 +19,6 @@ public class CreateBookingRequest
     [Range(0, 12)] public int KidsCount { get; set; }
     [Range(0, 30)] public int BaggageCount { get; set; }
     [StringLength(1500)] public string? Preferences { get; set; }
-    [Required, StringLength(120)] public string CustomerName { get; set; } = string.Empty;
-    [Required, StringLength(30)] public string Phone { get; set; } = string.Empty;
-    [EmailAddress, StringLength(160)] public string? Email { get; set; }
 }
 
-public record CreateBookingResponse(Guid BookingId, string BookingReference);
+public record CreateBookingResponse(Guid BookingId, string BookingReference, string Status);

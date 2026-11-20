@@ -20,10 +20,16 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: frontend-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
+
+# Configure AWS_REGION as a GitHub repository variable or secret. us-east-1 is
+# used only as the fallback so the workflow does not fail before deployment.
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || secrets.AWS_REGION || 'us-east-1' }}
 
 jobs:
   build-and-lint:
@@ -34,12 +40,12 @@ jobs:
         working-directory: frontend
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -54,3 +60,40 @@ jobs:
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+
+      - name: Validate AWS deployment configuration
+        if: github.ref == 'refs/heads/main'
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          FRONTEND_BUCKET: ${{ secrets.FRONTEND_BUCKET }}
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+        run: |
+          if [ -z "$AWS_ROLE_ARN" ]; then
+            echo "::error::Missing GitHub secret AWS_ROLE_ARN. Create an AWS IAM role trusted by GitHub OIDC and add its ARN."
+            exit 1
+          fi
+          if [ -z "$FRONTEND_BUCKET" ]; then
+            echo "::error::Missing GitHub secret FRONTEND_BUCKET."
+            exit 1
+          fi
+          if [ -z "$CLOUDFRONT_DISTRIBUTION_ID" ]; then
+            echo "::error::Missing GitHub secret CLOUDFRONT_DISTRIBUTION_ID."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        if: github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy frontend to S3
+        if: github.ref == 'refs/heads/main'
+        working-directory: .
+        run: aws s3 sync frontend/dist/ s3://${{ secrets.FRONTEND_BUCKET }}/ --delete
+
+      - name: Invalidate CloudFront cache
+        if: github.ref == 'refs/heads/main'
+        working-directory: .
+        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"

@@ -84,10 +84,12 @@ The previous deployment flow used main for image publishing. Update the publishe
 Secrets:
 - `AWS_NONPROD_ROLE_ARN`
 - `DATABASE_SECRET_ARN`
+- `AUTH_OTP_PEPPER_SECRET_ARN` — Secrets Manager secret containing the OTP HMAC pepper
 
 Variables:
 - `NONPROD_DEPLOY_ENABLED` — set to `true` only when nonprod is ready
 - `FRONTEND_URL`
+- `AUTH_EMAIL_FROM` — verified Amazon SES sender address
 
 The publisher role also needs ECR push permissions. The nonprod deploy role needs narrowly scoped ECS deployment permissions and `iam:PassRole` for the CarLease task roles.
 
@@ -96,8 +98,10 @@ The publisher role also needs ECR push permissions. The nonprod deploy role need
 Secrets:
 - `AWS_PRODUCTION_ROLE_ARN`
 - `DATABASE_SECRET_ARN`
+- `AUTH_OTP_PEPPER_SECRET_ARN` — Secrets Manager secret containing the OTP HMAC pepper
 
 Variables:
+- `AUTH_EMAIL_FROM` — verified Amazon SES sender address
 - `DB_HOST`
 - `DB_NAME`
 - `DB_PORT` — optional; defaults to `5432`

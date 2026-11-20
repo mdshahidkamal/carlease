@@ -1,6 +1,7 @@
 using CarLease.Api.Data;
 using CarLease.Api.DTOs;
 using CarLease.Api.Models;
+using CarLease.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,6 +14,18 @@ public class BookingsController(ApplicationDbContext db) : ControllerBase
     [HttpPost]
     public async Task<ActionResult<CreateBookingResponse>> Create(CreateBookingRequest request, CancellationToken cancellationToken)
     {
+        var sessionToken = Request.Cookies[AuthController.SessionCookieName];
+        if (string.IsNullOrEmpty(sessionToken))
+            return Unauthorized(new { message = "Please sign in before creating a booking." });
+
+        var sessionTokenHash = AuthTokenHash.HashSessionToken(sessionToken);
+        var now = DateTime.UtcNow;
+        var session = await db.CustomerSessions
+            .Include(x => x.Customer)
+            .SingleOrDefaultAsync(x => x.TokenHash == sessionTokenHash && x.RevokedAtUtc == null && x.ExpiresAtUtc > now, cancellationToken);
+        if (session is null)
+            return Unauthorized(new { message = "Your sign-in session has expired. Please sign in again." });
+
         var pickupDateTime = request.PickupDate.ToDateTime(request.PickupTime, DateTimeKind.Utc);
         if (pickupDateTime < DateTime.UtcNow)
             return BadRequest(new { message = "The pickup date and time must be in the future." });
@@ -31,18 +44,18 @@ public class BookingsController(ApplicationDbContext db) : ControllerBase
 
         var booking = new Booking
         {
-            BookingReference = CreateReference(), Pickup = request.Pickup.Trim(), PickupPlaceId = request.PickupPlaceId,
+            BookingReference = CreateReference(), Customer = session.Customer, Pickup = request.Pickup.Trim(), PickupPlaceId = request.PickupPlaceId,
             PickupLatitude = request.PickupLatitude, PickupLongitude = request.PickupLongitude,
             Dropoff = request.Dropoff.Trim(), DropoffPlaceId = request.DropoffPlaceId,
             DropoffLatitude = request.DropoffLatitude, DropoffLongitude = request.DropoffLongitude,
             PickupDateTime = pickupDateTime, VehicleType = request.VehicleType,
             PassengerCount = request.PassengerCount, KidsCount = request.KidsCount, BaggageCount = request.BaggageCount,
-            Preferences = request.Preferences?.Trim(), CustomerName = request.CustomerName.Trim(), Phone = request.Phone.Trim(), Email = request.Email?.Trim()
+            Preferences = request.Preferences?.Trim()
         };
 
         db.Bookings.Add(booking);
         await db.SaveChangesAsync(cancellationToken);
-        return StatusCode(StatusCodes.Status201Created, new CreateBookingResponse(booking.Id, booking.BookingReference));
+        return StatusCode(StatusCodes.Status201Created, new CreateBookingResponse(booking.Id, booking.BookingReference, booking.Status));
     }
 
     private static string CreateReference()

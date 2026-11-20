@@ -455,6 +455,15 @@
   font-size: 12px;
   line-height: 1.45;
 }
+.place-autocomplete gmp-place-autocomplete {
+  display: block;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 10px;
+  background: #141519;
+  color: #f8f8f8;
+  font-size: 16px;
+}
 .vehicle-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

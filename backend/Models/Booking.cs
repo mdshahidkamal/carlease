@@ -4,6 +4,8 @@ public class Booking
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string BookingReference { get; set; } = string.Empty;
+    public Guid CustomerId { get; set; }
+    public Customer Customer { get; set; } = null!;
     public string Pickup { get; set; } = string.Empty;
     public string? PickupPlaceId { get; set; }
     public double? PickupLatitude { get; set; }
@@ -18,9 +20,6 @@ public class Booking
     public int KidsCount { get; set; }
     public int BaggageCount { get; set; }
     public string? Preferences { get; set; }
-    public string CustomerName { get; set; } = string.Empty;
-    public string Phone { get; set; } = string.Empty;
-    public string? Email { get; set; }
     public string Status { get; set; } = "PENDING_REVIEW";
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 }

@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS "Customers" (
 -- The phone index must exist before the INSERT ... ON CONFLICT below.
 CREATE UNIQUE INDEX IF NOT EXISTS "IX_Customers_Phone" ON "Customers" ("Phone");
 
-DO $
+DO $migration$
 BEGIN
     IF EXISTS (
         SELECT 1

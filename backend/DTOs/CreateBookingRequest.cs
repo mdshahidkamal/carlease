@@ -24,4 +24,4 @@ public class CreateBookingRequest
     [EmailAddress, StringLength(160)] public string? Email { get; set; }
 }
 
-public record CreateBookingResponse(Guid BookingId, string BookingReference);
+public record CreateBookingResponse(Guid BookingId, string BookingReference, string Status);

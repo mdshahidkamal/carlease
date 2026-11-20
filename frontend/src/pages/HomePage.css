@@ -341,14 +341,24 @@
 }
 .public-home-account {
   display: flex;
+  min-height: 42px;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 12px;
-  margin: 14px auto 0;
-  color: #c6c6ca;
+  padding: 0 22px;
+  color: #f1f1f2;
   font-size: 13px;
 }
-.public-home-account button,
+.public-home-account button {
+  border: 0;
+  background: transparent;
+  color: #ff6872;
+  padding: 6px 0;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .booking-signout {
   border: 1px solid rgba(255, 255, 255, .25);
   border-radius: 8px;

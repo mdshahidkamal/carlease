@@ -54,7 +54,11 @@ export default function AuthModal({ onClose, onSuccess }: { onClose: () => void;
           : { email: email.trim() }),
       })
       const result = await readAuthResponse(response)
-      if (!response.ok) throw new Error(formatAuthError(result, `Could not send a code (HTTP ${response.status}).`))
+      if (!response.ok) throw new Error(formatAuthError(result, `Could not continue (HTTP ${response.status}).`))
+      if (result.customer) {
+        onSuccess(result.customer)
+        return
+      }
       setStep('verify')
       setResendSeconds(60)
       setNotice(result.message || 'A six-digit code has been sent to your email address.')

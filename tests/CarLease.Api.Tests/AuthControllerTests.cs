@@ -102,6 +102,34 @@ public class AuthControllerTests
     }
 
     [Fact]
+    public async Task Register_CreatesCustomerAndSessionWithoutOtp_WhenVerificationIsDisabled()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var emailSender = new FakeOtpEmailSender();
+        var controller = CreateController(db, emailSender, emailVerificationEnabled: false);
+
+        var result = await controller.Register(new RegisterRequest
+        {
+            Name = "Nonprod Customer",
+            Email = "nonprod@example.com",
+            Phone = "+1 404 555 0185",
+            ConsentAccepted = true
+        }, CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status200OK, Assert.IsType<OkObjectResult>(result).StatusCode);
+        var customer = Assert.Single(await db.Customers.ToListAsync());
+        Assert.Equal("nonprod@example.com", customer.Email);
+        Assert.NotNull(customer.ConsentAcceptedAtUtc);
+        Assert.Empty(await db.AuthOtpChallenges.ToListAsync());
+        var session = Assert.Single(await db.CustomerSessions.ToListAsync());
+        Assert.Equal(customer.Id, session.CustomerId);
+        Assert.Contains(AuthController.SessionCookieName, controller.Response.Headers.SetCookie.ToString());
+        Assert.Null(emailSender.LastCode);
+    }
+
+    [Fact]
     public async Task Register_ReturnsSesExceptionDetailInDevelopment_WhenEmailDeliveryFails()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -214,6 +242,52 @@ public class AuthControllerTests
     }
 
     [Fact]
+    public async Task VerifyOtp_ReturnsNotFound_WhenVerificationIsDisabled()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var controller = CreateController(db, new FakeOtpEmailSender(), emailVerificationEnabled: false);
+
+        var result = await controller.VerifyOtp(new VerifyOtpRequest
+        {
+            Email = "nonprod@example.com",
+            Code = "123456"
+        }, CancellationToken.None);
+
+        Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Empty(await db.Customers.ToListAsync());
+        Assert.Empty(await db.CustomerSessions.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Login_CreatesSessionWithoutOtp_WhenVerificationIsDisabled()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var customer = new Customer
+        {
+            CustomerName = "Nonprod Login Customer",
+            Email = "nonprod-login@example.com",
+            Phone = "+1 404 555 0184"
+        };
+        db.Customers.Add(customer);
+        await db.SaveChangesAsync();
+        var emailSender = new FakeOtpEmailSender();
+        var controller = CreateController(db, emailSender, emailVerificationEnabled: false);
+
+        var result = await controller.Login(new EmailRequest { Email = "NONPROD-LOGIN@example.com" }, CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status200OK, Assert.IsType<OkObjectResult>(result).StatusCode);
+        Assert.Empty(await db.AuthOtpChallenges.ToListAsync());
+        var session = Assert.Single(await db.CustomerSessions.ToListAsync());
+        Assert.Equal(customer.Id, session.CustomerId);
+        Assert.Contains(AuthController.SessionCookieName, controller.Response.Headers.SetCookie.ToString());
+        Assert.Null(emailSender.LastCode);
+    }
+
+    [Fact]
     public async Task Login_ReturnsNotFound_ForUnregisteredEmail()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -236,10 +310,17 @@ public class AuthControllerTests
         return db;
     }
 
-    private static AuthController CreateController(ApplicationDbContext db, FakeOtpEmailSender emailSender)
+    private static AuthController CreateController(
+        ApplicationDbContext db,
+        FakeOtpEmailSender emailSender,
+        bool emailVerificationEnabled = true)
     {
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["Auth:OtpPepper"] = OtpPepper })
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:OtpPepper"] = OtpPepper,
+                ["Auth:EmailVerificationEnabled"] = emailVerificationEnabled.ToString()
+            })
             .Build();
         var controller = new AuthController(
             db,

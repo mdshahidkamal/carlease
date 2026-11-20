@@ -10,11 +10,18 @@ using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var otpPepper = builder.Configuration["Auth:OtpPepper"];
-if (string.IsNullOrWhiteSpace(otpPepper) || otpPepper.Length < 32)
-    throw new InvalidOperationException("Configure Auth:OtpPepper with a secret of at least 32 characters.");
-if (string.IsNullOrWhiteSpace(builder.Configuration["Auth:EmailFrom"]))
-    throw new InvalidOperationException("Configure Auth:EmailFrom with a verified Amazon SES sender address.");
+var emailVerificationEnabled = builder.Configuration.GetValue("Auth:EmailVerificationEnabled", true);
+if (!emailVerificationEnabled && builder.Environment.IsProduction())
+    throw new InvalidOperationException("Auth:EmailVerificationEnabled cannot be false in Production.");
+
+if (emailVerificationEnabled)
+{
+    var otpPepper = builder.Configuration["Auth:OtpPepper"];
+    if (string.IsNullOrWhiteSpace(otpPepper) || otpPepper.Length < 32)
+        throw new InvalidOperationException("Configure Auth:OtpPepper with a secret of at least 32 characters.");
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Auth:EmailFrom"]))
+        throw new InvalidOperationException("Configure Auth:EmailFrom with a verified Amazon SES sender address.");
+}
 
 // Add services to the container.
 builder.Services.AddControllers();

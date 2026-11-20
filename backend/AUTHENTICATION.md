@@ -1,6 +1,10 @@
 # Passwordless customer authentication
 
-The API implements the proposed email OTP flow: customers request login or registration codes, verify a six-digit code, and receive a server-side session represented by an HttpOnly cookie. The home page stays public; both the booking route and booking API require a valid session.
+The API implements email OTP verification by default: customers request login or registration codes, verify a six-digit code, and receive a server-side session represented by an HttpOnly cookie. The home page stays public; both the booking route and booking API require a valid session.
+
+## Non-production email-verification switch
+
+`Auth:EmailVerificationEnabled` defaults to `true`. `appsettings.Staging.json` sets it to `false` for non-production testing; with verification disabled, registration still requires all fields and consent, checks email/phone uniqueness, creates the customer and session, while login requires a matching existing email and creates a session. Neither flow sends email or creates OTP challenges. Booking authorization, sessions, and request rate limits remain in force. This mode does not prove control of the email address and must never be enabled in Production; startup rejects `false` in the Production environment. Set the Staging value to `true` to restore OTP verification.
 
 ## PostgreSQL setup
 

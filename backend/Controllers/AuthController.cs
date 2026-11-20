@@ -42,6 +42,20 @@ public class AuthController(
         if (await db.Customers.AnyAsync(x => x.Phone == phone, cancellationToken))
             return Conflict(new AuthMessageResponse("This phone number is already associated with an account. Sign in with its registered email."));
 
+        if (!IsEmailVerificationEnabled)
+        {
+            var customer = new Customer
+            {
+                CustomerName = request.Name.Trim(),
+                Email = email,
+                Phone = phone,
+                ConsentAcceptedAtUtc = DateTime.UtcNow
+            };
+            db.Customers.Add(customer);
+            await CreateSessionAsync(customer, DateTime.UtcNow, cancellationToken);
+            return Ok(new { customer = ToResponse(customer) });
+        }
+
         return await CreateChallengeAsync(email, "REGISTER", request.Name.Trim(), phone, DateTime.UtcNow, cancellationToken);
     }
 
@@ -49,8 +63,17 @@ public class AuthController(
     public async Task<IActionResult> Login(EmailRequest request, CancellationToken cancellationToken)
     {
         var email = NormalizeEmail(request.Email);
-        if (!await db.Customers.AnyAsync(x => x.Email != null && x.Email.ToLower() == email, cancellationToken))
+        var customer = await db.Customers.SingleOrDefaultAsync(
+            x => x.Email != null && x.Email.ToLower() == email,
+            cancellationToken);
+        if (customer is null)
             return NotFound(new AuthMessageResponse("No account was found for this email. Please register first."));
+
+        if (!IsEmailVerificationEnabled)
+        {
+            await CreateSessionAsync(customer, DateTime.UtcNow, cancellationToken);
+            return Ok(new { customer = ToResponse(customer) });
+        }
 
         return await CreateChallengeAsync(email, "LOGIN", null, null, null, cancellationToken);
     }
@@ -58,6 +81,9 @@ public class AuthController(
     [HttpPost("resend-otp")]
     public async Task<IActionResult> ResendOtp(EmailRequest request, CancellationToken cancellationToken)
     {
+        if (!IsEmailVerificationEnabled)
+            return NotFound(new AuthMessageResponse("Email verification is disabled in this environment."));
+
         var email = NormalizeEmail(request.Email);
         var challenge = await db.AuthOtpChallenges
             .Where(x => x.Email == email && x.ConsumedAtUtc == null)
@@ -86,6 +112,9 @@ public class AuthController(
     [HttpPost("verify-otp")]
     public async Task<IActionResult> VerifyOtp(VerifyOtpRequest request, CancellationToken cancellationToken)
     {
+        if (!IsEmailVerificationEnabled)
+            return NotFound(new AuthMessageResponse("Email verification is disabled in this environment."));
+
         var email = NormalizeEmail(request.Email);
         var challenge = await db.AuthOtpChallenges
             .Where(x => x.Email == email && x.ConsumedAtUtc == null)
@@ -156,18 +185,7 @@ public class AuthController(
         }
 
         challenge.ConsumedAtUtc = now;
-        var sessionToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
-            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        db.CustomerSessions.Add(new CustomerSession
-        {
-            Customer = customer,
-            TokenHash = AuthTokenHash.HashSessionToken(sessionToken),
-            CreatedAtUtc = now,
-            ExpiresAtUtc = now.AddDays(SessionDays)
-        });
-        await db.SaveChangesAsync(cancellationToken);
-        SetSessionCookie(sessionToken);
-
+        await CreateSessionAsync(customer, now, cancellationToken);
         return Ok(new { customer = ToResponse(customer) });
     }
 
@@ -198,6 +216,23 @@ public class AuthController(
             Path = "/"
         });
         return Ok(new AuthMessageResponse("You have been signed out."));
+    }
+
+    private bool IsEmailVerificationEnabled => configuration.GetValue("Auth:EmailVerificationEnabled", true);
+
+    private async Task CreateSessionAsync(Customer customer, DateTime now, CancellationToken cancellationToken)
+    {
+        var sessionToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        db.CustomerSessions.Add(new CustomerSession
+        {
+            Customer = customer,
+            TokenHash = AuthTokenHash.HashSessionToken(sessionToken),
+            CreatedAtUtc = now,
+            ExpiresAtUtc = now.AddDays(SessionDays)
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        SetSessionCookie(sessionToken);
     }
 
     private async Task<IActionResult> CreateChallengeAsync(

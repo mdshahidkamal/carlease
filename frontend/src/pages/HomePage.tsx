@@ -43,6 +43,7 @@ export default function HomePage() {
     <>
     <main className="public-home">
       <div className="public-home-hero" role="img" aria-label="Luxury stretch limousine in a city at night" />
+      {customer && <div className="public-home-account"><span>Welcome {customer.name}</span><button type="button" onClick={signOut}>Sign out</button></div>}
       <header className="public-home-intro">
         <h1>Royal Limo Service</h1>
         <p className="public-home-tagline">Luxury Chauffeur &amp; Limousine Services</p>
@@ -50,7 +51,6 @@ export default function HomePage() {
           Travel in comfort and style. Royal Limo Service provides premium chauffeured transportation
           for airport transfers, special occasions, business travel and memorable nights out.
         </p>
-        {customer && <div className="public-home-account"><span>Signed in as {customer.name}</span><button type="button" onClick={signOut}>Sign out</button></div>}
         <div className="public-home-actions public-home-hero-actions">
           <a className="public-home-button public-home-call" href="tel:+14049187449">☎ Call</a>
           <button className="public-home-button public-home-primary" type="button" onClick={bookRide} disabled={loading}>{loading ? 'Checking sign-in…' : 'Book a Ride'}</button>

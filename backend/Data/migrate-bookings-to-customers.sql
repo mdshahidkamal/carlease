@@ -14,7 +14,10 @@ CREATE TABLE IF NOT EXISTS "Customers" (
     "CreatedAtUtc" timestamp with time zone NOT NULL DEFAULT now()
 );
 
-DO $$
+-- The phone index must exist before the INSERT ... ON CONFLICT below.
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_Customers_Phone" ON "Customers" ("Phone");
+
+DO $
 BEGIN
     IF EXISTS (
         SELECT 1

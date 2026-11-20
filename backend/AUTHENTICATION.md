@@ -31,7 +31,14 @@ Configure these values outside source control:
 - `AWS_REGION`: SES region, for example `ap-southeast-2`.
 - Existing database settings (`ConnectionStrings__DefaultConnection` locally or the existing `DB_*` settings in ECS).
 
-The API uses the AWS SDK default credential chain. The ECS **application task role** must allow `ses:SendEmail` for the verified sender identity. SES sandbox accounts can only send to verified recipient addresses until production sending is enabled. No AWS resources or secret values are created by this feature.
+The API uses the AWS SDK credential chain. The ECS **application task role** must allow `ses:SendEmail` for the verified sender identity. For local AWS CLI login credentials that the .NET SDK cannot read directly, create a process-backed profile (it fetches short-lived credentials from the CLI without storing keys):
+
+```powershell
+aws configure set credential_process "aws configure export-credentials --profile default --format process" --profile carlease-sdk
+[Environment]::SetEnvironmentVariable("AWS_PROFILE", "carlease-sdk", "User")
+```
+
+Restart Visual Studio or the terminal after setting `AWS_PROFILE`. The default AWS CLI profile must already be logged in and its identity needs `ses:SendEmail` permission. SES sandbox accounts can send only to verified recipient addresses until production access is enabled. Do not put AWS credentials in source control or User Secrets.
 
 Example local configuration (use your own generated pepper and verified sender):
 

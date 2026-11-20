@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { AuthCustomer } from './context'
-import { authApiBaseUrl } from './api'
+import { authApiBaseUrl, readAuthResponse } from './api'
 
 type AuthMode = 'login' | 'register'
+
+function formatAuthError(result: { message?: string; title?: string; detail?: string; traceId?: string }, fallback: string) {
+  const message = result.message || result.title || fallback
+  const detail = result.detail && result.detail !== message ? ` Details: ${result.detail}` : ''
+  const reference = result.traceId ? ` (Reference: ${result.traceId})` : ''
+  return `${message}${detail}${reference}`
+}
 
 export default function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (customer: AuthCustomer) => void }) {
   const [mode, setMode] = useState<AuthMode>('login')
@@ -46,8 +53,8 @@ export default function AuthModal({ onClose, onSuccess }: { onClose: () => void;
           ? { name: name.trim(), email: email.trim(), phone: phone.trim(), consentAccepted: consent }
           : { email: email.trim() }),
       })
-      const result = await response.json() as { message?: string; title?: string }
-      if (!response.ok) throw new Error(result.message || result.title || `Could not send a code (HTTP ${response.status}).`)
+      const result = await readAuthResponse(response)
+      if (!response.ok) throw new Error(formatAuthError(result, `Could not send a code (HTTP ${response.status}).`))
       setStep('verify')
       setResendSeconds(60)
       setNotice(result.message || 'A six-digit code has been sent to your email address.')
@@ -69,8 +76,8 @@ export default function AuthModal({ onClose, onSuccess }: { onClose: () => void;
         credentials: 'include',
         body: JSON.stringify({ email: email.trim(), code }),
       })
-      const result = await response.json() as { message?: string; title?: string; customer?: AuthCustomer }
-      if (!response.ok) throw new Error(result.message || result.title || `Verification failed (HTTP ${response.status}).`)
+      const result = await readAuthResponse(response)
+      if (!response.ok) throw new Error(formatAuthError(result, `Verification failed (HTTP ${response.status}).`))
       if (!result.customer) throw new Error('Sign-in succeeded, but customer details were not returned.')
       onSuccess(result.customer)
     } catch (requestError) {
@@ -91,8 +98,8 @@ export default function AuthModal({ onClose, onSuccess }: { onClose: () => void;
         credentials: 'include',
         body: JSON.stringify({ email: email.trim() }),
       })
-      const result = await response.json() as { message?: string; title?: string }
-      if (!response.ok) throw new Error(result.message || result.title || `Could not resend the code (HTTP ${response.status}).`)
+      const result = await readAuthResponse(response)
+      if (!response.ok) throw new Error(formatAuthError(result, `Could not resend the code (HTTP ${response.status}).`))
       setResendSeconds(60)
       setNotice(result.message || 'A new code has been sent.')
     } catch (requestError) {
@@ -117,16 +124,16 @@ export default function AuthModal({ onClose, onSuccess }: { onClose: () => void;
           </div>
           <form className="auth-form" onSubmit={submitDetails}>
             {mode === 'register' && <>
-              <label>Full name<input autoComplete="name" maxLength={120} required value={name} onChange={(event) => setName(event.target.value)} /></label>
-              <label>Mobile number<input type="tel" autoComplete="tel" maxLength={30} minLength={5} placeholder="Include country code" required value={phone} onChange={(event) => setPhone(event.target.value)} /></label>
+              <label>Full name *<input autoComplete="name" maxLength={120} required value={name} onChange={(event) => setName(event.target.value)} /></label>
+              <label>Mobile number *<input type="tel" autoComplete="tel" maxLength={30} minLength={5} placeholder="Include country code" required value={phone} onChange={(event) => setPhone(event.target.value)} /></label>
             </>}
-            <label>Email address<input type="email" autoComplete="email" maxLength={160} required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+            <label>Email address *<input type="email" autoComplete="email" maxLength={160} required value={email} onChange={(event) => setEmail(event.target.value)} /></label>
             {mode === 'register' && <label className="auth-consent"><input type="checkbox" required checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>I agree to the Terms of Service and Privacy Policy.</span></label>}
             {error && <p className="auth-message error" role="alert">{error}</p>}
             <button className="auth-submit" type="submit" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? 'Get Login Code' : 'Register'}</button>
           </form>
         </> : <form className="auth-form" onSubmit={verifyCode}>
-          <label>Six-digit code<input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} /></label>
+          <label>Six-digit code *<input autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} /></label>
           {notice && <p className="auth-message" role="status">{notice}</p>}
           {error && <p className="auth-message error" role="alert">{error}</p>}
           <button className="auth-submit" type="submit" disabled={busy || code.length !== 6}>{busy ? 'Verifying…' : mode === 'login' ? 'Login' : 'Verify and create account'}</button>

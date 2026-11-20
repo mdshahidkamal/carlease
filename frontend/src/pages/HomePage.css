@@ -267,6 +267,7 @@
   color: #dedee1;
   font-size: 13px;
   font-weight: 650;
+  text-align: left;
 }
 .auth-form input:not([type='checkbox']) {
   width: 100%;

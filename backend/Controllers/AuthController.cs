@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using Amazon.Runtime;
+using Amazon.Runtime.Internal;
 using CarLease.Api.Data;
 using CarLease.Api.DTOs;
 using CarLease.Api.Models;
@@ -74,8 +76,9 @@ public class AuthController(
         challenge.FailedAttempts = 0;
         await db.SaveChangesAsync(cancellationToken);
 
-        if (!await TrySendOtpAsync(email, otp, cancellationToken))
-            return StatusCode(StatusCodes.Status502BadGateway, new AuthMessageResponse("We could not deliver the email. Please try again after the resend cooldown."));
+        var emailFailure = await SendOtpAsync(email, otp, cancellationToken);
+        if (emailFailure is not null)
+            return emailFailure;
 
         return Ok(new AuthMessageResponse("A new verification code has been sent."));
     }
@@ -234,24 +237,103 @@ public class AuthController(
         });
         await db.SaveChangesAsync(cancellationToken);
 
-        if (!await TrySendOtpAsync(email, otp, cancellationToken))
-            return StatusCode(StatusCodes.Status502BadGateway, new AuthMessageResponse("We could not deliver the email. Please try again after the resend cooldown."));
+        var emailFailure = await SendOtpAsync(email, otp, cancellationToken);
+        if (emailFailure is not null)
+            return emailFailure;
 
         return Ok(new AuthMessageResponse("A six-digit verification code has been sent to your email address."));
     }
 
-    private async Task<bool> TrySendOtpAsync(string email, string otp, CancellationToken cancellationToken)
+    private async Task<IActionResult?> SendOtpAsync(string email, string otp, CancellationToken cancellationToken)
     {
         try
         {
             await emailSender.SendAsync(email, otp, cancellationToken);
-            return true;
+            return null;
         }
-        catch (AmazonServiceException exception)
+        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
-            logger.LogError(exception, "Amazon SES failed to send an authentication code.");
-            return false;
+            logger.LogError(exception, "Amazon SES timed out while sending an authentication code.");
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new
+            {
+                message = "The email provider timed out while sending the verification code. Check API network access to Amazon SES, then try again after the resend cooldown.",
+                detail = environment.IsDevelopment() ? exception.Message : null
+            });
         }
+        catch (TimeoutException exception)
+        {
+            logger.LogError(exception, "Amazon SES timed out while sending an authentication code.");
+            return StatusCode(StatusCodes.Status504GatewayTimeout, new
+            {
+                message = "The email provider timed out while sending the verification code. Check API network access to Amazon SES, then try again after the resend cooldown.",
+                detail = environment.IsDevelopment() ? exception.Message : null
+            });
+        }
+        catch (HttpErrorResponseException exception)
+        {
+            logger.LogError(exception, "Amazon SES returned an HTTP error while sending an authentication code.");
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                message = "Amazon SES rejected the verification email request. Check the SES response details and sender/recipient verification.",
+                detail = environment.IsDevelopment() ? await GetSesHttpErrorDetailAsync(exception, cancellationToken) : null
+            });
+        }
+        catch (AmazonClientException exception)
+        {
+            logger.LogError(exception, "Amazon SES could not send an authentication code. Check AWS credentials, SES sender identity, and permissions.");
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                message = "We could not deliver the email. Check local AWS credentials, the SES sender identity, and ses:SendEmail permissions, then try again after the resend cooldown.",
+                detail = environment.IsDevelopment() ? exception.Message : null
+            });
+        }
+    }
+
+    private static async Task<string> GetSesHttpErrorDetailAsync(
+        HttpErrorResponseException exception,
+        CancellationToken cancellationToken)
+    {
+        var response = exception.Response;
+        if (response is null)
+            return exception.Message;
+
+        var status = (int)response.StatusCode;
+        var responseStream = await response.ResponseBody.OpenResponseAsync();
+        using (responseStream)
+        using (var reader = new StreamReader(responseStream))
+        {
+            var body = await reader.ReadToEndAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(body))
+                return $"SES returned HTTP {status}. {exception.Message}";
+
+            try
+            {
+                using var document = JsonDocument.Parse(body);
+                var root = document.RootElement;
+                var code = GetJsonString(root, "code", "Code", "__type", "type");
+                var message = GetJsonString(root, "message", "Message", "detail");
+                var error = code is null ? $"SES returned HTTP {status}" : $"SES returned HTTP {status} ({code})";
+                return message is null ? error + "." : $"{error}: {message}";
+            }
+            catch (JsonException)
+            {
+                return $"SES returned HTTP {status}, but its error response was not valid JSON.";
+            }
+        }
+    }
+
+    private static string? GetJsonString(JsonElement element, params string[] propertyNames)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+            return null;
+
+        foreach (var propertyName in propertyNames)
+        {
+            if (element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String)
+                return value.GetString();
+        }
+
+        return null;
     }
 
     private async Task<CustomerSession?> FindSessionAsync(CancellationToken cancellationToken)

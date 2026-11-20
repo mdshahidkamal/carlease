@@ -2,6 +2,8 @@ using Amazon;
 using Amazon.SimpleEmailV2;
 using CarLease.Api.Data;
 using CarLease.Api.Services;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -93,6 +95,29 @@ builder.Services.AddCors(options => options.AddPolicy(frontendPolicy, policy =>
         .AllowCredentials()));
 
 var app = builder.Build();
+var exceptionLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("UnhandledApiException");
+app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
+{
+    var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+    var traceId = context.TraceIdentifier;
+    exceptionLogger.LogError(exception, "Unhandled exception for {Method} {Path}. TraceId: {TraceId}",
+        context.Request.Method, context.Request.Path, traceId);
+
+    var problem = new ProblemDetails
+    {
+        Status = StatusCodes.Status500InternalServerError,
+        Title = "The request could not be completed.",
+        Detail = app.Environment.IsDevelopment()
+            ? exception?.GetBaseException().Message
+            : $"An unexpected error occurred. Reference: {traceId}",
+        Instance = context.Request.Path
+    };
+    problem.Extensions["traceId"] = traceId;
+
+    context.Response.StatusCode = problem.Status.Value;
+    await context.Response.WriteAsJsonAsync(problem, cancellationToken: context.RequestAborted);
+}));
+
 // Serve React frontend files.
 app.UseDefaultFiles();
 app.UseStaticFiles();

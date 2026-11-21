@@ -33,7 +33,167 @@ public class BookingsControllerTests
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         await using var db = CreateDatabase(connection);
+        var (controller, vehicle, customer) = await CreateAuthenticatedController(db);
+        var request = CreateRequest();
+        request.VehicleId = vehicle.Id;
+        request.PickupAtUtc = DateTimeOffset.UtcNow.AddDays(1).ToOffset(TimeSpan.FromHours(-5));
+        request.Pickup = "  Pickup address  ";
+        request.PickupPlaceId = "pickup-id";
+        request.PickupLatitude = 33.749;
+        request.PickupLongitude = -84.388;
+        request.Dropoff = "  Dropoff address  ";
+        request.DropoffPlaceId = "dropoff-id";
+        request.DropoffLatitude = 33.64;
+        request.DropoffLongitude = -84.427;
+        request.EstimatedDistanceMiles = 7.386m;
+        request.PassengerCount = 2;
+        request.KidsCount = 1;
+        request.BaggageCount = 2;
+        request.Preferences = "  Child seat  ";
+
+        var result = await controller.Create(request, CancellationToken.None);
+
+        var response = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status201Created, response.StatusCode);
+        db.ChangeTracker.Clear();
+        var booking = Assert.Single(await db.Bookings.ToListAsync());
+        Assert.Equal(customer.Id, booking.CustomerId);
+        Assert.Equal(vehicle.Id, booking.VehicleId);
+        Assert.Equal(vehicle.VehicleName, booking.VehicleType);
+        Assert.Matches("^RL[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$", booking.BookingReference);
+        Assert.Equal(request.PickupAtUtc.Value.UtcDateTime, booking.PickupDateTime);
+        Assert.Equal("Pickup address", booking.Pickup);
+        Assert.Equal(request.PickupPlaceId, booking.PickupPlaceId);
+        Assert.Equal(request.PickupLatitude, booking.PickupLatitude);
+        Assert.Equal(request.PickupLongitude, booking.PickupLongitude);
+        Assert.Equal("Dropoff address", booking.Dropoff);
+        Assert.Equal(request.DropoffPlaceId, booking.DropoffPlaceId);
+        Assert.Equal(request.DropoffLatitude, booking.DropoffLatitude);
+        Assert.Equal(request.DropoffLongitude, booking.DropoffLongitude);
+        Assert.Equal(7.39m, booking.EstimatedDistanceMiles);
+        Assert.Equal(0m, booking.EstimatedAmountDollars);
+        Assert.Equal(2, booking.PassengerCount);
+        Assert.Equal(1, booking.KidsCount);
+        Assert.Equal(2, booking.BaggageCount);
+        Assert.Equal("Child seat", booking.Preferences);
+        Assert.Equal("PENDING_REVIEW", booking.Status);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(-1d)]
+    [InlineData(10000000000d)]
+    public async Task Create_RejectsMissingOrInvalidDistance(double? miles)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var (controller, vehicle, _) = await CreateAuthenticatedController(db);
+        var request = CreateRequest();
+        request.VehicleId = vehicle.Id;
+        request.EstimatedDistanceMiles = miles is null ? null : (decimal)miles.Value;
+
+        var result = await controller.Create(request, CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Empty(await db.Bookings.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_PersistsManualLocationsAndZeroDistance()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var (controller, vehicle, _) = await CreateAuthenticatedController(db);
+        var request = CreateRequest();
+        request.VehicleId = vehicle.Id;
+        request.EstimatedDistanceMiles = 0m;
+
+        var result = await controller.Create(request, CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status201Created, Assert.IsType<ObjectResult>(result.Result).StatusCode);
+        db.ChangeTracker.Clear();
+        var booking = Assert.Single(await db.Bookings.ToListAsync());
+        Assert.Equal(0m, booking.EstimatedDistanceMiles);
+        Assert.Equal(0m, booking.EstimatedAmountDollars);
+        Assert.Null(booking.PickupPlaceId);
+        Assert.Null(booking.PickupLatitude);
+        Assert.Null(booking.DropoffPlaceId);
+        Assert.Null(booking.DropoffLongitude);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("inactive")]
+    [InlineData("passengers")]
+    [InlineData("baggage")]
+    [InlineData("past")]
+    [InlineData("no-time")]
+    public async Task Create_RejectsInvalidVehicleCapacityOrTime(string scenario)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var (controller, vehicle, _) = await CreateAuthenticatedController(db);
+        var request = CreateRequest();
+        request.VehicleId = vehicle.Id;
+        switch (scenario)
+        {
+            case "missing": request.VehicleId = Guid.NewGuid(); break;
+            case "inactive": vehicle.IsActive = false; await db.SaveChangesAsync(); break;
+            case "passengers": request.PassengerCount = vehicle.PassengerCapacity + 1; break;
+            case "baggage": request.BaggageCount = vehicle.LuggageCapacity + 1; break;
+            case "past": request.PickupAtUtc = DateTimeOffset.UtcNow.AddMinutes(-2); break;
+            case "no-time": request.PickupAtUtc = null; break;
+        }
+        var result = await controller.Create(request, CancellationToken.None);
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Empty(await db.Bookings.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_AcceptsCurrentMinuteAndMaximumCapacities()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var (controller, vehicle, _) = await CreateAuthenticatedController(db);
+        var now = DateTimeOffset.UtcNow;
+        var request = CreateRequest();
+        request.VehicleId = vehicle.Id;
+        request.PickupAtUtc = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, TimeSpan.Zero);
+        request.PassengerCount = vehicle.PassengerCapacity;
+        request.BaggageCount = vehicle.LuggageCapacity;
+        var result = await controller.Create(request, CancellationToken.None);
+        Assert.Equal(StatusCodes.Status201Created, Assert.IsType<ObjectResult>(result.Result).StatusCode);
+    }
+
+    [Fact]
+    public async Task Vehicles_ReturnsOnlyActiveVehiclesInNameOrder()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        db.Vehicles.AddRange(
+            new Vehicle { VehicleName = "SUV", PassengerCapacity = 6, LuggageCapacity = 4 },
+            new Vehicle { VehicleName = "Sedan", PassengerCapacity = 3, LuggageCapacity = 2 },
+            new Vehicle { VehicleName = "Inactive", PassengerCapacity = 1, IsActive = false });
+        await db.SaveChangesAsync();
+        var result = Assert.IsType<OkObjectResult>(await new VehiclesController(db).Get(CancellationToken.None));
+        var json = System.Text.Json.JsonSerializer.Serialize(result.Value);
+        Assert.Contains("Sedan", json);
+        Assert.Contains("SUV", json);
+        Assert.DoesNotContain("Inactive", json);
+        Assert.True(json.IndexOf("SUV", StringComparison.Ordinal) < json.IndexOf("Sedan", StringComparison.Ordinal));
+        Assert.Contains("\"PassengerCapacity\":3", json);
+        Assert.Contains("\"LuggageCapacity\":2", json);
+    }
+
+    private static async Task<(BookingsController Controller, Vehicle Vehicle, Customer Customer)> CreateAuthenticatedController(ApplicationDbContext db)
+    {
         var customer = new Customer { CustomerName = "Alex", Email = "alex@example.com", Phone = "+1 404 555 0100" };
+        var vehicle = new Vehicle { VehicleName = "Sedan", PassengerCapacity = 3, LuggageCapacity = 2 };
         const string sessionToken = "test-session-token";
         db.CustomerSessions.Add(new CustomerSession
         {
@@ -41,20 +201,11 @@ public class BookingsControllerTests
             TokenHash = AuthTokenHash.HashSessionToken(sessionToken),
             ExpiresAtUtc = DateTime.UtcNow.AddDays(1)
         });
+        db.Vehicles.Add(vehicle);
         await db.SaveChangesAsync();
-
         var controller = CreateController(db);
-        controller.ControllerContext.HttpContext.Request.Headers.Cookie =
-            $"{AuthController.SessionCookieName}={sessionToken}";
-
-        var result = await controller.Create(CreateRequest(), CancellationToken.None);
-
-        var response = Assert.IsType<ObjectResult>(result.Result);
-        Assert.Equal(StatusCodes.Status201Created, response.StatusCode);
-        var booking = Assert.Single(await db.Bookings.ToListAsync());
-        Assert.Equal(customer.Id, booking.CustomerId);
-        Assert.Equal("alex@example.com", (await db.Customers.SingleAsync()).Email);
-        Assert.Equal("PENDING_REVIEW", booking.Status);
+        controller.ControllerContext.HttpContext.Request.Headers.Cookie = $"{AuthController.SessionCookieName}={sessionToken}";
+        return (controller, vehicle, customer);
     }
 
     private static ApplicationDbContext CreateDatabase(SqliteConnection connection)
@@ -78,9 +229,9 @@ public class BookingsControllerTests
     {
         Pickup = "Pickup address",
         Dropoff = "Dropoff address",
-        PickupDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),
-        PickupTime = new TimeOnly(12, 0),
-        VehicleType = "Executive Sedan",
+        EstimatedDistanceMiles = 7.4m,
+        PickupAtUtc = DateTimeOffset.UtcNow.AddDays(1),
+        VehicleId = Guid.NewGuid(),
         PassengerCount = 1
     };
 }

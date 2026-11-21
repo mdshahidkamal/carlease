@@ -49,7 +49,7 @@ export function GoogleLocationInput(props: LocationInputProps) {
         const handleSelect = async (event: google.maps.places.PlacePredictionSelectEvent) => {
             const currentSelection = ++selection
             setError('')
-            onChange.current({ ...emptyPlace, address: widget.value })
+            onChange.current({ ...emptyPlace, address: widget.value, resolving: true })
             const place = event.placePrediction.toPlace()
             try {
                 await place.fetchFields({ fields: ['id', 'formattedAddress', 'location'] })

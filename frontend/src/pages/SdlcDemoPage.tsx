@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { authApiBaseUrl } from '../auth/api'
 
 interface SdlcDemoRecord {
   id: number
@@ -38,8 +39,7 @@ export default function SdlcDemoPage() {
     setError('')
 
     try {
-      const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5292').replace(/\/+$/, '')
-      const response = await fetch(`${apiBaseUrl}/api/sdlc-demo`)
+      const response = await fetch(`${authApiBaseUrl}/api/sdlc-demo`)
       if (!response.ok) {
         throw new Error(`The API returned ${response.status} ${response.statusText}.`)
       }

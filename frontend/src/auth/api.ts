@@ -1,4 +1,10 @@
-export const authApiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5292').replace(/\/+$/, '')
+import { localApiBaseUrl } from './apiBaseUrl'
+
+export const authApiBaseUrl = localApiBaseUrl(
+  import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5292',
+  window.location.hostname,
+  import.meta.env.DEV,
+)
 
 export interface AuthApiResponse {
   message?: string

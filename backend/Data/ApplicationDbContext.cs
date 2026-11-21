@@ -7,6 +7,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 {
     public DbSet<Booking> Bookings => Set<Booking>();
 
+    public DbSet<Vehicle> Vehicles => Set<Vehicle>();
+
     public DbSet<Customer> Customers => Set<Customer>();
 
     public DbSet<AuthOtpChallenge> AuthOtpChallenges => Set<AuthOtpChallenge>();
@@ -24,11 +26,22 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         booking.Property(x => x.Pickup).HasMaxLength(500);
         booking.Property(x => x.Dropoff).HasMaxLength(500);
         booking.Property(x => x.Preferences).HasMaxLength(1500);
+        booking.Property(x => x.EstimatedDistanceMiles).HasColumnName("EstimatedDistance_Miles").HasPrecision(12, 2);
+        booking.Property(x => x.EstimatedAmountDollars).HasColumnName("EstimatedAmount_Dollars").HasPrecision(12, 2);
         booking.HasIndex(x => x.CustomerId);
         booking.HasOne(x => x.Customer)
             .WithMany(x => x.Bookings)
             .HasForeignKey(x => x.CustomerId)
             .OnDelete(DeleteBehavior.Restrict);
+        booking.HasIndex(x => x.VehicleId);
+        booking.HasOne(x => x.Vehicle)
+            .WithMany()
+            .HasForeignKey(x => x.VehicleId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        var vehicle = modelBuilder.Entity<Vehicle>();
+        vehicle.HasKey(x => x.Id);
+        vehicle.Property(x => x.VehicleName).HasMaxLength(100).IsRequired();
 
         var customer = modelBuilder.Entity<Customer>();
         customer.HasKey(x => x.Id);

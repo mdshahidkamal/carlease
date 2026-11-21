@@ -12,9 +12,9 @@ public class CreateBookingRequest
     public string? DropoffPlaceId { get; set; }
     public double? DropoffLatitude { get; set; }
     public double? DropoffLongitude { get; set; }
-    public DateOnly PickupDate { get; set; }
-    public TimeOnly PickupTime { get; set; }
-    [Required] public string VehicleType { get; set; } = string.Empty;
+    [Required, Range(typeof(decimal), "0", "9999999999.99")] public decimal? EstimatedDistanceMiles { get; set; }
+    [Required] public DateTimeOffset? PickupAtUtc { get; set; }
+    [Required] public Guid? VehicleId { get; set; }
     [Range(1, 12)] public int PassengerCount { get; set; }
     [Range(0, 12)] public int KidsCount { get; set; }
     [Range(0, 30)] public int BaggageCount { get; set; }

@@ -14,8 +14,12 @@ public class Booking
     public string? DropoffPlaceId { get; set; }
     public double? DropoffLatitude { get; set; }
     public double? DropoffLongitude { get; set; }
+    public decimal? EstimatedDistanceMiles { get; set; }
+    public decimal EstimatedAmountDollars { get; set; }
     public DateTime PickupDateTime { get; set; }
     public string VehicleType { get; set; } = string.Empty;
+    public Guid? VehicleId { get; set; }
+    public Vehicle? Vehicle { get; set; }
     public int PassengerCount { get; set; }
     public int KidsCount { get; set; }
     public int BaggageCount { get; set; }

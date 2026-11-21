@@ -13,6 +13,12 @@ Set `VITE_GOOGLE_MAPS_API_KEY` in `frontend/.env.local` and restart Vite. In the
 
 The booking page uses Google's Place Autocomplete widget for pickup and drop-off. Users can enter addresses manually when search is unavailable. A 403 `ACCESS_DENIED` response from Places requires checking the Google Cloud project, billing, and key restrictions; it is not resolved by restarting Vite.
 
+Driving distance is calculated in miles using the Maps JavaScript Routes library. Enable the Routes API in the same Google Cloud project and include it in the browser key's API restrictions. Route requests can incur Google Maps Platform charges. A successful current route calculation is required to submit; manual addresses can still be used when routing is available. The submitted distance is rounded to two decimal places. The API saves the estimated amount as zero, and saves each location's formatted address, place ID, latitude and longitude when provided by Google; manually entered addresses do not have Google metadata.
+
+Existing databases need `backend/Data/migrate-bookings-estimates.sql` if the estimate columns do not exist. If they already exist, check their numeric types, precision and nullability before deployment; the migration does not alter existing columns. Fresh databases use numeric(12,2) for both estimates, with nullable distance for historical bookings and a default of zero for amount. The API database role needs INSERT access to these columns.
+
+The booking form loads active vehicles from `GET /api/vehicles`. Existing databases need the vehicle master and booking foreign key in `backend/Data/migrate-bookings-vehicles.sql`; the API database role needs SELECT access to `Vehicles`. Booking requests now send `vehicleId` and `pickupAtUtc` (an ISO 8601 timestamp with an offset) rather than `vehicleType`, `pickupDate` and `pickupTime`. The selected local pickup minute may be the current minute; earlier minutes are rejected. Passenger and baggage limits are the lower of the vehicle capacities and the existing booking limits of 12 and 30.
+
 ## React Compiler
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).

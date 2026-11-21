@@ -224,6 +224,7 @@ public class AuthControllerTests
 
         Assert.Equal(StatusCodes.Status200OK, Assert.IsType<OkObjectResult>(loginResult).StatusCode);
         Assert.NotNull(emailSender.LastCode);
+        Assert.Matches("^[0-9]{6}$", emailSender.LastCode);
         var challenge = Assert.Single(await db.AuthOtpChallenges.ToListAsync());
         Assert.Equal("login@example.com", challenge.Email);
         Assert.Equal("LOGIN", challenge.Purpose);
@@ -238,7 +239,34 @@ public class AuthControllerTests
         Assert.Equal(customer.Id, Assert.Single(await db.Customers.ToListAsync()).Id);
         var session = Assert.Single(await db.CustomerSessions.ToListAsync());
         Assert.Equal(customer.Id, session.CustomerId);
-        Assert.Contains(AuthController.SessionCookieName, controller.Response.Headers.SetCookie.ToString());
+        var cookie = controller.Response.Headers.SetCookie.ToString();
+        Assert.Contains(AuthController.SessionCookieName, cookie);
+        Assert.Contains("max-age=2592000", cookie, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("samesite=lax", cookie, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("; secure", cookie, StringComparison.OrdinalIgnoreCase);
+
+        var cookiePair = cookie.Split(';')[0];
+        db.ChangeTracker.Clear();
+        var nextRequest = CreateController(db, emailSender);
+        nextRequest.Request.Headers.Cookie = cookiePair;
+        Assert.IsType<OkObjectResult>(await nextRequest.Me(CancellationToken.None));
+        Assert.IsType<OkObjectResult>(await nextRequest.Logout(CancellationToken.None));
+        db.ChangeTracker.Clear();
+        Assert.IsType<UnauthorizedObjectResult>(await nextRequest.Me(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Login_UsesSecureCookieOutsideDevelopment()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        db.Customers.Add(new Customer { CustomerName = "Customer", Email = "staging@example.com", Phone = "+1 404 555 0190" });
+        await db.SaveChangesAsync();
+        var controller = CreateController(db, new FakeOtpEmailSender(), emailVerificationEnabled: false, environmentName: "Staging");
+
+        Assert.IsType<OkObjectResult>(await controller.Login(new EmailRequest { Email = "staging@example.com" }, CancellationToken.None));
+        Assert.Contains("; secure", controller.Response.Headers.SetCookie.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -313,7 +341,8 @@ public class AuthControllerTests
     private static AuthController CreateController(
         ApplicationDbContext db,
         FakeOtpEmailSender emailSender,
-        bool emailVerificationEnabled = true)
+        bool emailVerificationEnabled = true,
+        string environmentName = "Development")
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -326,7 +355,7 @@ public class AuthControllerTests
             db,
             emailSender,
             configuration,
-            new TestWebHostEnvironment(),
+            new TestWebHostEnvironment { EnvironmentName = environmentName },
             NullLogger<AuthController>.Instance);
         controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
         return controller;

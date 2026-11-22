@@ -81,9 +81,13 @@ public class AdminController(ApplicationDbContext db, IConfiguration configurati
         var booking = await db.Bookings.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (booking is null) return NotFound();
         var previous = booking.Status;
-        var valid = (previous == "PENDING_REVIEW" && target is "CONFIRMED" or "REJECTED") ||
-                    (previous == "CONFIRMED" && target is "ACTIVE" or "REJECTED") ||
-                    (previous == "ACTIVE" && target == "COMPLETED");
+        var valid = previous switch
+        {
+            "PENDING_REVIEW" => target is "CONFIRMED" or "REJECTED",
+            "CONFIRMED" => target is "ACTIVE" or "REJECTED",
+            "ACTIVE" => target == "COMPLETED",
+            _ => false
+        };
         if (!valid) return Conflict(new { message = $"Cannot change a booking from {previous} to {target}." });
 
         booking.Status = target!;

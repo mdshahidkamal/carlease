@@ -14,6 +14,7 @@ type Report = {
   completedRideRevenue: number; averageCompletedRideValue: number
 }
 const api = authApiBaseUrl
+const todayInAtlanta = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 const money = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
 const dateTime = (value: string) => new Date(value).toLocaleString()
 
@@ -29,7 +30,7 @@ export default function AdminPage() {
   const [status, setStatus] = useState('ALL')
   const [search, setSearch] = useState('')
   const [period, setPeriod] = useState('daily')
-  const [reportDate, setReportDate] = useState(new Date().toISOString().slice(0, 10))
+  const [reportDate, setReportDate] = useState(todayInAtlanta)
   const [report, setReport] = useState<Report | null>(null)
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null)
   const [reason, setReason] = useState('')

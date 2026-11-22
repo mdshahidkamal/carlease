@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { authApiBaseUrl } from '../auth/api'
 import AuthModal from '../auth/AuthModal'
+import CustomerBookings from './CustomerBookings'
 import './HomePage.css'
 
 const CURRENT_YEAR = 2026
@@ -20,12 +21,22 @@ export default function HomePage() {
   const { customer, loading, sessionError, setCustomer, setSessionError } = useAuth()
   const location = useLocation()
   const [authOpen, setAuthOpen] = useState(() => Boolean(location.state?.openAuth))
+  const [authReturnTo, setAuthReturnTo] = useState<string | null>(() => location.state?.openAuth ? location.state?.returnTo ?? '/booking' : null)
   const [signOutError, setSignOutError] = useState('')
   const navigate = useNavigate()
 
   function bookRide() {
     if (customer) navigate('/booking')
-    else setAuthOpen(true)
+    else {
+      setAuthReturnTo('/booking')
+      setAuthOpen(true)
+    }
+  }
+
+  function closeAuth() {
+    setAuthOpen(false)
+    setAuthReturnTo(null)
+    if (location.state?.openAuth) navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null })
   }
 
   async function signOut() {
@@ -43,7 +54,9 @@ export default function HomePage() {
     <>
     <main className="public-home">
       <div className="public-home-hero" role="img" aria-label="Luxury stretch limousine in a city at night" />
-      {customer && <div className="public-home-account"><span>Welcome {customer.name}</span><button type="button" onClick={signOut}>Sign out</button></div>}
+      <div className="public-home-account">
+        {customer ? <><span>Welcome {customer.name}</span><button type="button" onClick={signOut}>Sign out</button></> : !loading && <button type="button" onClick={() => { setAuthReturnTo(null); setAuthOpen(true) }}>Login / Registration</button>}
+      </div>
       <header className="public-home-intro">
         <h1>Royal Limo Service</h1>
         <p className="public-home-tagline">Luxury Chauffeur &amp; Limousine Services</p>
@@ -56,6 +69,7 @@ export default function HomePage() {
           <button className="public-home-button public-home-primary" type="button" onClick={bookRide} disabled={loading}>{loading ? 'Checking sign-in…' : 'Book a Ride'}</button>
           <a className="public-home-button public-home-secondary" href="/assets/red-line-luxe-contact.vcf" download="Red-Line-Luxe-Contact.vcf">♙ Save Contact</a>
         </div>
+        {customer && <CustomerBookings key={customer.id} />}
         {sessionError && <p className="auth-message error" role="alert">{sessionError} You can still try to sign in.</p>}
         {signOutError && <p className="auth-message error" role="alert">{signOutError}</p>}
       </header>
@@ -100,11 +114,16 @@ export default function HomePage() {
         © {CURRENT_YEAR} Royal Limo Service · Luxury Chauffeur &amp; Limousine Services
       </footer>
     </main>
-    {authOpen && <AuthModal onClose={() => setAuthOpen(false)} onSuccess={(authenticatedCustomer) => {
+    {authOpen && <AuthModal onClose={closeAuth} onSuccess={(authenticatedCustomer) => {
       setCustomer(authenticatedCustomer)
       setSessionError(null)
-      setAuthOpen(false)
-      navigate(location.state?.returnTo ?? '/booking', { replace: true })
+      if (authReturnTo) {
+        setAuthOpen(false)
+        setAuthReturnTo(null)
+        navigate(authReturnTo, { replace: true })
+      } else {
+        closeAuth()
+      }
     }} />}
     </>
   )

@@ -19,6 +19,8 @@ Existing databases need `backend/Data/migrate-bookings-estimates.sql` if the est
 
 The booking form loads active vehicles from `GET /api/vehicles`. Existing databases need the vehicle master and booking foreign key in `backend/Data/migrate-bookings-vehicles.sql`; the API database role needs SELECT access to `Vehicles`. Booking requests now send `vehicleId` and `pickupAtUtc` (an ISO 8601 timestamp with an offset) rather than `vehicleType`, `pickupDate` and `pickupTime`. The selected local pickup minute may be the current minute; earlier minutes are rejected. Passenger and baggage limits are the lower of the vehicle capacities and the existing booking limits of 12 and 30.
 
+After sign-in, the homepage requests `GET /api/bookings` with the session cookie. The API returns only that customer's rides across all statuses, ordered by pickup time (most recent first). Selecting a booking requests `GET /api/bookings/{bookingReference}` for its details; both endpoints enforce ownership. Pickup dates and times are displayed in the browser's local time zone. The API role needs SELECT access to `Bookings` and `CustomerSessions`.
+
 ## React Compiler
 
 The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).

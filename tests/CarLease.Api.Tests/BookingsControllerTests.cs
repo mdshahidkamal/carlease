@@ -13,6 +13,75 @@ namespace CarLease.Api.Tests;
 
 public class BookingsControllerTests
 {
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("invalid")]
+    [InlineData("expired")]
+    [InlineData("revoked")]
+    public async Task CustomerBookings_RejectInvalidSession(string scenario)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var (controller, _, _) = await CreateAuthenticatedController(db);
+        if (scenario == "missing") controller.Request.Headers.Remove("Cookie");
+        if (scenario == "invalid") controller.Request.Headers.Cookie = $"{AuthController.SessionCookieName}=invalid";
+        if (scenario == "expired") { (await db.CustomerSessions.SingleAsync()).ExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1); await db.SaveChangesAsync(); }
+        if (scenario == "revoked") { (await db.CustomerSessions.SingleAsync()).RevokedAtUtc = DateTime.UtcNow; await db.SaveChangesAsync(); }
+
+        Assert.IsType<UnauthorizedObjectResult>((await controller.GetMyBookings(CancellationToken.None)).Result);
+        Assert.IsType<UnauthorizedObjectResult>((await controller.GetMyBooking("RLEARL", CancellationToken.None)).Result);
+    }
+
+    [Fact]
+    public async Task CustomerBookings_ReturnsOwnBookingsAcrossStatusesAndDetailsOnlyForOwner()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var (controller, _, customer) = await CreateAuthenticatedController(db);
+        var other = new Customer { CustomerName = "Other", Phone = "+1 404 555 0111", Email = "other@example.com" };
+        var pickup = DateTime.UtcNow.AddDays(1);
+        db.Bookings.AddRange(
+            new Booking { Customer = customer, BookingReference = "RLLATE", Pickup = "A", Dropoff = "B", PickupDateTime = pickup.AddHours(1) },
+            new Booking { Customer = customer, BookingReference = "RLEARL", Pickup = "Origin", Dropoff = "Destination", PickupDateTime = pickup, VehicleType = "Sedan", PassengerCount = 2, KidsCount = 1, BaggageCount = 2, EstimatedDistanceMiles = 7.4m, EstimatedAmountDollars = 0m, Preferences = "Child seat" },
+            new Booking { Customer = customer, BookingReference = "RLDONE", Status = "CONFIRMED", PickupDateTime = pickup },
+            new Booking { Customer = customer, BookingReference = "RLREJX", Status = "REJECTED", PickupDateTime = pickup },
+            new Booking { Customer = customer, BookingReference = "RLCOMP", Status = "COMPLETED", PickupDateTime = pickup },
+            new Booking { Customer = other, BookingReference = "RLOTHR", PickupDateTime = pickup });
+        await db.SaveChangesAsync();
+
+        var bookings = Assert.IsType<List<CustomerBookingSummary>>(Assert.IsType<OkObjectResult>((await controller.GetMyBookings(CancellationToken.None)).Result).Value);
+        Assert.Equal(new[] { "RLLATE", "RLCOMP", "RLDONE", "RLEARL", "RLREJX" }, bookings.Select(x => x.BookingReference));
+        Assert.Equal(new[] { "PENDING_REVIEW", "COMPLETED", "CONFIRMED", "PENDING_REVIEW", "REJECTED" }, bookings.Select(x => x.Status));
+        var detail = Assert.IsType<CustomerBookingDetails>(Assert.IsType<OkObjectResult>((await controller.GetMyBooking("RLEARL", CancellationToken.None)).Result).Value);
+        Assert.Equal("RLEARL", detail.BookingReference);
+        Assert.Equal("Origin", detail.Pickup);
+        Assert.Equal("Destination", detail.Dropoff);
+        Assert.Equal(pickup, detail.PickupDateTime);
+        Assert.Equal("PENDING_REVIEW", detail.Status);
+        Assert.Equal("Sedan", detail.VehicleType);
+        Assert.Equal(2, detail.PassengerCount);
+        Assert.Equal(1, detail.KidsCount);
+        Assert.Equal(2, detail.BaggageCount);
+        Assert.Equal(7.4m, detail.EstimatedDistanceMiles);
+        Assert.Equal(0m, detail.EstimatedAmountDollars);
+        Assert.Equal("Child seat", detail.Preferences);
+        Assert.IsType<NotFoundObjectResult>((await controller.GetMyBooking("RLOTHR", CancellationToken.None)).Result);
+        Assert.IsType<NotFoundObjectResult>((await controller.GetMyBooking("MISSING", CancellationToken.None)).Result);
+    }
+
+    [Fact]
+    public async Task GetMyBookings_ReturnsEmptyListWhenNoneExist()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var (controller, _, _) = await CreateAuthenticatedController(db);
+        var result = await controller.GetMyBookings(CancellationToken.None);
+        Assert.Empty(Assert.IsType<List<CustomerBookingSummary>>(Assert.IsType<OkObjectResult>(result.Result).Value));
+    }
+
     [Fact]
     public async Task Create_ReturnsUnauthorized_WhenNoSessionCookieIsSent()
     {

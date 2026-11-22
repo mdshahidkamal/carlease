@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { FormEvent } from 'react'
 import { authApiBaseUrl } from '../auth/api'
 
 type Booking = {
@@ -73,7 +74,7 @@ export default function AdminPage() {
     void Promise.all([loadBookings(), loadReport()]).catch(e => setError(e instanceof Error ? e.message : 'Could not load admin data.'))
   }, [authenticated, loadBookings, loadReport])
 
-  async function login(event: React.FormEvent<HTMLFormElement>) {
+  async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError('')
     try {
       const response = await fetch(`${api}/api/admin/auth/login`, {

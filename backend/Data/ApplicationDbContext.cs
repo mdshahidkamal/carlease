@@ -6,15 +6,12 @@ namespace CarLease.Api.Data;
 public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : DbContext(options)
 {
     public DbSet<Booking> Bookings => Set<Booking>();
-
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
-
     public DbSet<Customer> Customers => Set<Customer>();
-
     public DbSet<AuthOtpChallenge> AuthOtpChallenges => Set<AuthOtpChallenge>();
-
     public DbSet<CustomerSession> CustomerSessions => Set<CustomerSession>();
-
+    public DbSet<AdminSession> AdminSessions => Set<AdminSession>();
+    public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
     public DbSet<SdlcDemoRecord> SdlcDemoRecords => Set<SdlcDemoRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -29,15 +26,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         booking.Property(x => x.EstimatedDistanceMiles).HasColumnName("EstimatedDistance_Miles").HasPrecision(12, 2);
         booking.Property(x => x.EstimatedAmountDollars).HasColumnName("EstimatedAmount_Dollars").HasPrecision(12, 2);
         booking.HasIndex(x => x.CustomerId);
-        booking.HasOne(x => x.Customer)
-            .WithMany(x => x.Bookings)
-            .HasForeignKey(x => x.CustomerId)
-            .OnDelete(DeleteBehavior.Restrict);
+        booking.HasOne(x => x.Customer).WithMany(x => x.Bookings).HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
         booking.HasIndex(x => x.VehicleId);
-        booking.HasOne(x => x.Vehicle)
-            .WithMany()
-            .HasForeignKey(x => x.VehicleId)
-            .OnDelete(DeleteBehavior.Restrict);
+        booking.HasOne(x => x.Vehicle).WithMany().HasForeignKey(x => x.VehicleId).OnDelete(DeleteBehavior.Restrict);
 
         var vehicle = modelBuilder.Entity<Vehicle>();
         vehicle.HasKey(x => x.Id);
@@ -65,10 +56,24 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         customerSession.Property(x => x.TokenHash).IsRequired();
         customerSession.HasIndex(x => x.TokenHash).IsUnique();
         customerSession.HasIndex(x => new { x.CustomerId, x.ExpiresAtUtc });
-        customerSession.HasOne(x => x.Customer)
-            .WithMany()
-            .HasForeignKey(x => x.CustomerId)
-            .OnDelete(DeleteBehavior.Cascade);
+        customerSession.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Cascade);
+
+        var adminSession = modelBuilder.Entity<AdminSession>();
+        adminSession.HasKey(x => x.Id);
+        adminSession.Property(x => x.TokenHash).IsRequired();
+        adminSession.HasIndex(x => x.TokenHash).IsUnique();
+        adminSession.HasIndex(x => x.ExpiresAtUtc);
+
+        var adminAudit = modelBuilder.Entity<AdminAuditLog>();
+        adminAudit.HasKey(x => x.Id);
+        adminAudit.Property(x => x.BookingReference).HasMaxLength(32).IsRequired();
+        adminAudit.Property(x => x.Action).HasMaxLength(24).IsRequired();
+        adminAudit.Property(x => x.PreviousStatus).HasMaxLength(32).IsRequired();
+        adminAudit.Property(x => x.NewStatus).HasMaxLength(32).IsRequired();
+        adminAudit.Property(x => x.Reason).HasMaxLength(1000);
+        adminAudit.Property(x => x.AdminEmail).HasMaxLength(160).IsRequired();
+        adminAudit.HasIndex(x => new { x.BookingId, x.CreatedAtUtc });
+        adminAudit.HasIndex(x => x.CreatedAtUtc);
 
         var sdlcDemoRecord = modelBuilder.Entity<SdlcDemoRecord>();
         sdlcDemoRecord.HasNoKey();

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { useAuth } from './auth/useAuth'
+import AdminPage from './pages/AdminPage'
 import BookingPage from './pages/BookingPage'
 import HomePage from './pages/HomePage'
 import SdlcDemoPage from './pages/SdlcDemoPage'
@@ -27,6 +28,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/booking" element={<ProtectedBookingPage />} />
+          <Route path="/admin" element={<AdminPage />} />
           <Route path="/sdlc-demo" element={<SdlcDemoPage />} />
         </Routes>
       </BrowserRouter>

@@ -13,20 +13,46 @@ namespace CarLease.Api.Controllers;
 [Route("api/[controller]")]
 public class BookingsController(ApplicationDbContext db) : ControllerBase
 {
+    [HttpGet]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<List<CustomerBookingSummary>>> GetMyBookings(CancellationToken cancellationToken)
+    {
+        var session = await FindSessionAsync(cancellationToken);
+        if (session is null)
+            return Unauthorized(new { message = "Please sign in to view your bookings." });
+
+        var bookings = await db.Bookings.AsNoTracking()
+            .Where(x => x.CustomerId == session.CustomerId)
+            .OrderByDescending(x => x.PickupDateTime).ThenBy(x => x.BookingReference)
+            .Select(x => new CustomerBookingSummary(x.BookingReference, x.PickupDateTime, x.Status))
+            .ToListAsync(cancellationToken);
+        return Ok(bookings);
+    }
+
+    [HttpGet("{bookingReference}")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<CustomerBookingDetails>> GetMyBooking(string bookingReference, CancellationToken cancellationToken)
+    {
+        var session = await FindSessionAsync(cancellationToken);
+        if (session is null)
+            return Unauthorized(new { message = "Please sign in to view your bookings." });
+
+        var booking = await db.Bookings.AsNoTracking()
+            .Where(x => x.CustomerId == session.CustomerId && x.BookingReference == bookingReference)
+            .Select(x => new CustomerBookingDetails(x.BookingReference, x.Pickup, x.Dropoff, x.PickupDateTime, x.Status,
+                x.VehicleType, x.PassengerCount, x.KidsCount, x.BaggageCount,
+                x.EstimatedDistanceMiles, x.EstimatedAmountDollars, x.Preferences))
+            .SingleOrDefaultAsync(cancellationToken);
+        return booking is null ? NotFound(new { message = "Booking not found." }) : Ok(booking);
+    }
+
     [HttpPost]
     public async Task<ActionResult<CreateBookingResponse>> Create(CreateBookingRequest request, CancellationToken cancellationToken)
     {
-        var sessionToken = Request.Cookies[AuthController.SessionCookieName];
-        if (string.IsNullOrEmpty(sessionToken))
-            return Unauthorized(new { message = "Please sign in before creating a booking." });
-
-        var sessionTokenHash = AuthTokenHash.HashSessionToken(sessionToken);
-        var now = DateTime.UtcNow;
-        var session = await db.CustomerSessions
-            .Include(x => x.Customer)
-            .SingleOrDefaultAsync(x => x.TokenHash == sessionTokenHash && x.RevokedAtUtc == null && x.ExpiresAtUtc > now, cancellationToken);
+        var session = await FindSessionAsync(cancellationToken);
         if (session is null)
-            return Unauthorized(new { message = "Your sign-in session has expired. Please sign in again." });
+            return Unauthorized(new { message = "Please sign in before creating a booking." });
+        var now = DateTime.UtcNow;
 
         if (request.EstimatedDistanceMiles is null or < 0 or > 9999999999.99m)
             return BadRequest(new { message = "A valid driving distance is required." });
@@ -77,6 +103,16 @@ public class BookingsController(ApplicationDbContext db) : ControllerBase
         }
 
         return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Could not generate a unique booking reference. Please try again." });
+    }
+
+    private Task<CustomerSession?> FindSessionAsync(CancellationToken cancellationToken)
+    {
+        var token = Request.Cookies[AuthController.SessionCookieName];
+        if (string.IsNullOrEmpty(token)) return Task.FromResult<CustomerSession?>(null);
+        var hash = AuthTokenHash.HashSessionToken(token);
+        var now = DateTime.UtcNow;
+        return db.CustomerSessions.Include(x => x.Customer)
+            .SingleOrDefaultAsync(x => x.TokenHash == hash && x.RevokedAtUtc == null && x.ExpiresAtUtc > now, cancellationToken);
     }
 
     private static string CreateReference()

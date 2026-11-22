@@ -106,18 +106,25 @@ public class AdminController(ApplicationDbContext db, IConfiguration configurati
         CancellationToken cancellationToken = default)
     {
         if (!await IsAdminAsync(cancellationToken)) return Unauthorized();
-        var selected = (date ?? DateTime.UtcNow).Date;
-        DateTime start, end;
+        var timeZoneId = configuration["Reporting:TimeZone"] ?? "America/New_York";
+        TimeZoneInfo timeZone;
+        try { timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId); }
+        catch (TimeZoneNotFoundException) { return StatusCode(500, new { message = $"Reporting time zone '{timeZoneId}' is not available on the API host." }); }
+        catch (InvalidTimeZoneException) { return StatusCode(500, new { message = $"Reporting time zone '{timeZoneId}' is invalid." }); }
+
+        var selected = (date ?? TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone)).Date;
+        DateTime localStart, localEnd;
         switch (period.Trim().ToLowerInvariant())
         {
-            case "daily": start = selected; end = start.AddDays(1); break;
-            case "monthly": start = new DateTime(selected.Year, selected.Month, 1); end = start.AddMonths(1); break;
-            case "ytd": start = new DateTime(selected.Year, 1, 1); end = selected.AddDays(1); break;
-            case "fy": start = new DateTime(selected.Year, 1, 1); end = new DateTime(selected.Year + 1, 1, 1); break;
+            case "daily": localStart = selected; localEnd = localStart.AddDays(1); break;
+            case "monthly": localStart = new DateTime(selected.Year, selected.Month, 1); localEnd = localStart.AddMonths(1); break;
+            case "ytd": localStart = new DateTime(selected.Year, 1, 1); localEnd = selected.AddDays(1); break;
+            case "fy": localStart = new DateTime(selected.Year, 1, 1); localEnd = new DateTime(selected.Year + 1, 1, 1); break;
             default: return BadRequest(new { message = "Period must be daily, monthly, ytd or fy." });
         }
-        var query = db.Bookings.AsNoTracking().Where(x => x.CreatedAtUtc >= DateTime.SpecifyKind(start, DateTimeKind.Utc) &&
-            x.CreatedAtUtc < DateTime.SpecifyKind(end, DateTimeKind.Utc));
+        var startUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localStart, DateTimeKind.Unspecified), timeZone);
+        var endUtc = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localEnd, DateTimeKind.Unspecified), timeZone);
+        var query = db.Bookings.AsNoTracking().Where(x => x.CreatedAtUtc >= startUtc && x.CreatedAtUtc < endUtc);
         var total = await query.CountAsync(cancellationToken);
         var pending = await query.CountAsync(x => x.Status == "PENDING_REVIEW", cancellationToken);
         var confirmed = await query.CountAsync(x => x.Status == "CONFIRMED", cancellationToken);
@@ -125,7 +132,7 @@ public class AdminController(ApplicationDbContext db, IConfiguration configurati
         var active = await query.CountAsync(x => x.Status == "ACTIVE", cancellationToken);
         var completed = await query.CountAsync(x => x.Status == "COMPLETED", cancellationToken);
         var revenue = await query.Where(x => x.Status == "COMPLETED").SumAsync(x => (decimal?)x.EstimatedAmountDollars, cancellationToken) ?? 0m;
-        return Ok(new { period = period.ToLowerInvariant(), startDate = start, endDateExclusive = end, totalBookings = total,
+        return Ok(new { period = period.ToLowerInvariant(), timeZone = timeZoneId, startDate = localStart, endDateExclusive = localEnd, totalBookings = total,
             pendingReview = pending, confirmed, rejected, active, completed, completedRideRevenue = revenue,
             averageCompletedRideValue = completed == 0 ? 0m : Math.Round(revenue / completed, 2) });
     }

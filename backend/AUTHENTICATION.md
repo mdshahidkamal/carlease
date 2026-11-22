@@ -61,3 +61,24 @@ dotnet user-secrets set "Auth:EmailFrom" "<verified-ses-sender@example.com>" --p
 - Serve the frontend and API on the same site (as the existing ECS deployment does), or deliberately configure cookie, CORS, and SameSite behavior before splitting them across sites.
 - The registration form requires explicit terms/privacy consent. Review and publish the actual policy pages before accepting production customers.
 - Schedule routine cleanup of expired OTP challenges and expired/revoked sessions; the schema intentionally does not delete records automatically.
+
+## Administrator access
+
+The Admin Console is served at `/admin`. It uses a separate administrator session cookie and does not reuse customer sessions. The initial implementation supports one full-access administrator configured through server-side secrets:
+
+- `Admin__Email`: administrator sign-in email.
+- `Admin__Password`: a long, unique administrator password (use a password manager-generated value).
+
+Set these as .NET User Secrets for local development and as protected ECS task environment values sourced from AWS Secrets Manager for deployed environments. Never add the credentials to appsettings files, frontend environment variables, GitHub source, or browser code. The API stores only a hash of each random administrator session token. The session cookie is HttpOnly, SameSite=Lax, Secure outside Development, and expires after eight days. Sign-out revokes the session. Admin sign-in shares the API authentication rate limit.
+
+Before using the Admin Console against a database, back it up and execute `Data/admin-console-schema.sql` using pgAdmin or psql. It creates `AdminSessions` and `AdminAuditLogs`; it does not alter existing bookings. The API requires these tables for administrator sign-in and audit history.
+
+Admin API routes:
+- `POST /api/admin/auth/login`, `GET /api/admin/auth/me`, `POST /api/admin/auth/logout`
+- `GET /api/admin/bookings` and `GET /api/admin/bookings/{id}`
+- `PATCH /api/admin/bookings/{id}/status`
+- `GET /api/admin/reports?period=daily|monthly|ytd|fy&date=YYYY-MM-DD`
+
+Permitted transitions are `PENDING_REVIEW -> CONFIRMED|REJECTED`, `CONFIRMED -> ACTIVE|REJECTED`, and `ACTIVE -> COMPLETED`. A rejection reason is mandatory. Every successful transition writes an audit record with the booking reference, previous/new status, administrator email, reason and UTC timestamp. Completed/rejected bookings have no further status transitions.
+
+Reporting periods use the calendar year (January–December). Daily, monthly and YTD use the supplied reference date; FY means January 1 through December 31 of that reference year. Booking counts are grouped by booking creation timestamp. Revenue is summed from completed bookings' `EstimatedAmountDollars`; the current booking flow initializes this amount to zero, so meaningful revenue reporting requires pricing to be implemented/populated.

@@ -3,12 +3,14 @@ using System.Text;
 using CarLease.Api.Data;
 using CarLease.Api.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace CarLease.Api.Controllers;
 
 [ApiController]
 [Route("api/admin/auth")]
+[EnableRateLimiting("auth")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class AdminAuthController(ApplicationDbContext db, IConfiguration configuration, IWebHostEnvironment environment) : ControllerBase
 {

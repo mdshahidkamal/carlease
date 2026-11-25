@@ -43,7 +43,7 @@ public class BookingsController(ApplicationDbContext db) : ControllerBase
 
         var booking = await db.Bookings.AsNoTracking()
             .Where(x => x.CustomerId == session.CustomerId && x.BookingReference == bookingReference)
-            .Select(x => new CustomerBookingDetails(x.BookingReference, x.Pickup, x.Dropoff, x.PickupDateTime, x.Status,
+            .Select(x => new CustomerBookingDetails(x.BookingReference, x.Pickup, x.Via, x.Dropoff, x.PickupDateTime, x.Status,
                 x.VehicleType, x.PassengerCount, x.KidsCount, x.BaggageCount,
                 x.EstimatedDistanceMiles, x.EstimatedAmountDollars, x.Preferences))
             .SingleOrDefaultAsync(cancellationToken);
@@ -86,6 +86,7 @@ public class BookingsController(ApplicationDbContext db) : ControllerBase
         {
             Customer = session.Customer, Pickup = request.Pickup.Trim(), PickupPlaceId = request.PickupPlaceId,
             PickupLatitude = request.PickupLatitude, PickupLongitude = request.PickupLongitude,
+            Via = string.IsNullOrWhiteSpace(request.Via) ? null : request.Via.Trim(),
             Dropoff = request.Dropoff.Trim(), DropoffPlaceId = request.DropoffPlaceId,
             DropoffLatitude = request.DropoffLatitude, DropoffLongitude = request.DropoffLongitude,
             EstimatedDistanceMiles = Math.Round(request.EstimatedDistanceMiles.Value, 2, MidpointRounding.AwayFromZero),

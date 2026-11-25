@@ -70,7 +70,7 @@ public class AdminDashboardController(ApplicationDbContext db, IWebHostEnvironme
             .ThenByDescending(booking => booking.PickupDateTime)
             .ThenBy(booking => booking.BookingReference)
             .Select(booking => new AdminBooking(booking.BookingReference, booking.Customer.CustomerName,
-                booking.Customer.Phone, booking.PickupDateTime, booking.Pickup, booking.Dropoff,
+                booking.Customer.Phone, booking.PickupDateTime, booking.Pickup, booking.Via, booking.Dropoff,
                 booking.VehicleType, booking.Status, booking.PassengerCount, booking.BaggageCount, booking.Preferences))
             .ToListAsync(cancellationToken);
         return Ok(bookings);
@@ -120,5 +120,5 @@ public class AdminDashboardController(ApplicationDbContext db, IWebHostEnvironme
 public record AdminBookingCounts(int PendingReview, int Confirmed, int Active);
 public record AdminOperationalSummary(int Bookings, int Pickups, decimal EstimatedRevenueDollars);
 public record AdminBooking(string BookingReference, string CustomerName, string Phone, DateTime PickupDateTime,
-    string Pickup, string Dropoff, string VehicleType, string Status, int PassengerCount, int BaggageCount, string? Preferences);
+    string Pickup, string? Via, string Dropoff, string VehicleType, string Status, int PassengerCount, int BaggageCount, string? Preferences);
 public record UpdateAdminBookingStatus(string ExpectedStatus, string Status);

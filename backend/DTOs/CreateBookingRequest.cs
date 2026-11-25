@@ -8,6 +8,7 @@ public class CreateBookingRequest
     public string? PickupPlaceId { get; set; }
     public double? PickupLatitude { get; set; }
     public double? PickupLongitude { get; set; }
+    [StringLength(500)] public string? Via { get; set; }
     [Required, StringLength(500)] public string Dropoff { get; set; } = string.Empty;
     public string? DropoffPlaceId { get; set; }
     public double? DropoffLatitude { get; set; }

@@ -119,7 +119,7 @@ public class AdminDashboardControllerTests
         var customer = new Customer { CustomerName = "Example", Phone = "555" };
         var time = new DateTime(2026, 11, 25, 12, 0, 0, DateTimeKind.Utc);
         db.Bookings.AddRange(
-            new Booking { Customer = customer, BookingReference = "RLA", Pickup = "Origin", Dropoff = "Destination", PickupDateTime = time, VehicleType = "Sedan", Status = "PENDING_REVIEW", PassengerCount = 2, BaggageCount = 1, Preferences = "Child seat" },
+            new Booking { Customer = customer, BookingReference = "RLA", Pickup = "Origin", Via = "Stop", Dropoff = "Destination", PickupDateTime = time, VehicleType = "Sedan", Status = "PENDING_REVIEW", PassengerCount = 2, BaggageCount = 1, Preferences = "Child seat" },
             new Booking { Customer = customer, BookingReference = "RLF", PickupDateTime = time.AddDays(1), Status = "PENDING_REVIEW" },
             new Booking { Customer = customer, BookingReference = "RLG", PickupDateTime = time.AddDays(1), Status = "PENDING_REVIEW" },
             new Booking { Customer = customer, BookingReference = "RLB", PickupDateTime = time.AddDays(2), Status = "CONFIRMED" },
@@ -138,6 +138,7 @@ public class AdminDashboardControllerTests
         Assert.Equal("555", pending.Phone);
         Assert.Equal(time, pending.PickupDateTime);
         Assert.Equal("Origin", pending.Pickup);
+        Assert.Equal("Stop", pending.Via);
         Assert.Equal("Destination", pending.Dropoff);
         Assert.Equal("Sedan", pending.VehicleType);
         Assert.Equal(2, pending.PassengerCount);

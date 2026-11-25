@@ -8,6 +8,10 @@ export interface PlaceValue {
 
 export const emptyPlace: PlaceValue = { address: '', placeId: '', latitude: null, longitude: null }
 
-export function routeKey(pickup: PlaceValue, dropoff: PlaceValue) {
-    return JSON.stringify([pickup.placeId ? `places/${pickup.placeId}` : pickup.address.trim(), dropoff.placeId ? `places/${dropoff.placeId}` : dropoff.address.trim()])
+export function routeLocation(place: PlaceValue) {
+    return place.placeId ? `places/${place.placeId}` : place.address.trim()
+}
+
+export function routeKey(pickup: PlaceValue, dropoff: PlaceValue, via: PlaceValue | null = null) {
+    return JSON.stringify([routeLocation(pickup), via ? routeLocation(via) : null, routeLocation(dropoff)])
 }

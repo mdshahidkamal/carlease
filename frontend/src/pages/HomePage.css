@@ -205,23 +205,68 @@
 }
 .ride-dialog {
   box-sizing: border-box;
-  width: min(430px, calc(100% - 36px));
-  max-height: 85vh;
-  padding: 24px;
-  border: 1px solid rgba(214, 179, 106, .28);
-  border-radius: 20px;
-  background: #141519;
+  width: min(660px, calc(100% - 24px));
+  max-width: none;
+  max-height: 90vh;
+  padding: 0;
+  border: 1px solid rgba(214, 179, 106, .3);
+  border-radius: 16px;
+  background: #101114;
   color: #f8f8f8;
   text-align: left;
   overflow-wrap: anywhere;
 }
 .ride-dialog::backdrop { background: rgba(0, 0, 0, .76); }
-.ride-dialog-heading { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.ride-dialog-heading { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-bottom: 1px solid rgba(255, 255, 255, .1); }
+.ride-icon { width: 22px; height: 22px; flex: 0 0 22px; }
+.ride-heading-icon, .ride-panel-icon { display: grid; flex: 0 0 40px; width: 40px; height: 40px; place-items: center; border-radius: 10px; background: rgba(217, 39, 53, .16); color: #ff858d; }
+.ride-heading-icon { border: 1px solid rgba(217, 39, 53, .5); }
+.ride-heading-text { flex: 1; min-width: 0; }
 .ride-dialog-heading h2 { margin: 0; font-size: 20px; }
-.ride-dialog-heading button { border: 0; background: transparent; color: #f8f8f8; cursor: pointer; font-size: 26px; }
-.ride-details { display: grid; gap: 12px; margin: 20px 0 0; font-size: 14px; }
-.ride-details dt { color: #aaaab0; }
-.ride-details dd { margin: 3px 0 0; }
+.ride-heading-text p { margin: 4px 0 0; color: #aaaab0; font-size: 12px; }
+.ride-heading-text strong { margin-left: 8px; color: #ff858d; }
+.ride-status { padding: 6px 12px; border: 1px solid rgba(214, 179, 106, .45); border-radius: 20px; background: rgba(214, 179, 106, .12); color: #e5c785; font-size: 11px; font-weight: 750; text-align: center; }
+.ride-close-icon { border: 0; background: transparent; color: #c6c6ca; cursor: pointer; font-size: 26px; line-height: 1; }
+.ride-dialog-content { padding: 14px 20px; }
+.ride-details { display: grid; gap: 12px; margin: 0; font-size: 14px; }
+.ride-details dt { color: #aaaab0; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.ride-details dd { margin: 4px 0 0; font-weight: 650; }
+.ride-panel { min-width: 0; padding: 14px; border: 1px solid rgba(255, 255, 255, .11); border-radius: 10px; background: #1b1c20; }
+.ride-schedule { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ride-schedule-item, .ride-vehicle { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ride-schedule-item + .ride-schedule-item { padding-left: 18px; border-left: 1px solid rgba(255, 255, 255, .11); }
+.ride-journey h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; font-size: 14px; }
+.ride-journey h3 .ride-icon, .ride-stat > .ride-icon { color: #ff858d; }
+.ride-route { margin-left: 10px; border-left: 1px solid #777980; }
+.ride-route-stop { position: relative; padding: 0 0 12px 22px; }
+.ride-route-stop:last-child { padding-bottom: 0; }
+.ride-route-stop::before { position: absolute; top: 3px; left: -6px; width: 11px; height: 11px; border: 2px solid #aaaab0; border-radius: 50%; background: #1b1c20; content: ''; }
+.ride-route-from::before { border-color: #54c993; background: #54c993; }
+.ride-route-to::before { border-color: #ff6872; background: #ff6872; }
+.ride-route-from dt { color: #54c993; }
+.ride-route-to dt { color: #ff858d; }
+.ride-route-stop dd { color: #dddde0; font-size: 13px; font-weight: 400; line-height: 1.4; }
+.ride-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.ride-stat { display: flex; align-items: flex-start; gap: 8px; }
+.ride-stat dd { font-size: 18px; }
+.ride-stat small { font-size: 11px; font-weight: 400; }
+.ride-amount { display: flex; align-items: center; gap: 14px; border-color: rgba(217, 39, 53, .45); background: #26171a; }
+.ride-amount-icon { display: grid; flex: 0 0 38px; width: 38px; height: 38px; place-items: center; border-radius: 50%; background: #d92735; color: #fff; font-size: 22px; font-weight: 700; }
+.ride-amount dt { color: #ff858d; }
+.ride-amount dd { font-size: 22px; }
+.ride-preferences dd { font-weight: 400; }
+.ride-dialog-footer { display: flex; justify-content: flex-end; padding: 12px 20px; border-top: 1px solid rgba(255, 255, 255, .1); }
+.ride-dialog-footer button { padding: 9px 24px; border: 1px solid rgba(255, 255, 255, .2); border-radius: 8px; background: #25262a; color: #f8f8f8; cursor: pointer; font: inherit; font-weight: 650; }
+.ride-retry { border: 0; background: transparent; color: #ff858d; cursor: pointer; font: inherit; text-decoration: underline; }
+@media (max-width: 480px) {
+  .ride-dialog-heading { flex-wrap: wrap; gap: 10px; padding: 14px; }
+  .ride-status { order: 4; margin-left: 50px; }
+  .ride-dialog-content { padding: 12px 14px; }
+  .ride-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ride-schedule-item + .ride-schedule-item { padding-left: 10px; }
+  .ride-schedule-item { gap: 8px; }
+  .ride-panel-icon { flex-basis: 34px; width: 34px; height: 34px; }
+}
 .pending-rides-message {
   margin: 16px 0 0;
   color: #c6c6ca;

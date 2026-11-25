@@ -44,7 +44,7 @@ public class BookingsControllerTests
         var pickup = DateTime.UtcNow.AddDays(1);
         db.Bookings.AddRange(
             new Booking { Customer = customer, BookingReference = "RLLATE", Pickup = "A", Dropoff = "B", PickupDateTime = pickup.AddHours(1) },
-            new Booking { Customer = customer, BookingReference = "RLEARL", Pickup = "Origin", Dropoff = "Destination", PickupDateTime = pickup, VehicleType = "Sedan", PassengerCount = 2, KidsCount = 1, BaggageCount = 2, EstimatedDistanceMiles = 7.4m, EstimatedAmountDollars = 0m, Preferences = "Child seat" },
+            new Booking { Customer = customer, BookingReference = "RLEARL", Pickup = "Origin", Via = "Stop", Dropoff = "Destination", PickupDateTime = pickup, VehicleType = "Sedan", PassengerCount = 2, KidsCount = 1, BaggageCount = 2, EstimatedDistanceMiles = 7.4m, EstimatedAmountDollars = 0m, Preferences = "Child seat" },
             new Booking { Customer = customer, BookingReference = "RLDONE", Status = "CONFIRMED", PickupDateTime = pickup.AddHours(-2) },
             new Booking { Customer = customer, BookingReference = "RLREJX", Status = "REJECTED", PickupDateTime = pickup.AddHours(-1) },
             new Booking { Customer = customer, BookingReference = "RLACTV", Status = "ACTIVE", PickupDateTime = pickup.AddHours(-2) },
@@ -58,6 +58,7 @@ public class BookingsControllerTests
         var detail = Assert.IsType<CustomerBookingDetails>(Assert.IsType<OkObjectResult>((await controller.GetMyBooking("RLEARL", CancellationToken.None)).Result).Value);
         Assert.Equal("RLEARL", detail.BookingReference);
         Assert.Equal("Origin", detail.Pickup);
+        Assert.Equal("Stop", detail.Via);
         Assert.Equal("Destination", detail.Dropoff);
         Assert.Equal(pickup, detail.PickupDateTime);
         Assert.Equal("PENDING_REVIEW", detail.Status);
@@ -138,6 +139,7 @@ public class BookingsControllerTests
         request.PickupPlaceId = "pickup-id";
         request.PickupLatitude = 33.749;
         request.PickupLongitude = -84.388;
+        request.Via = "  Stop address  ";
         request.Dropoff = "  Dropoff address  ";
         request.DropoffPlaceId = "dropoff-id";
         request.DropoffLatitude = 33.64;
@@ -163,6 +165,7 @@ public class BookingsControllerTests
         Assert.Equal(request.PickupPlaceId, booking.PickupPlaceId);
         Assert.Equal(request.PickupLatitude, booking.PickupLatitude);
         Assert.Equal(request.PickupLongitude, booking.PickupLongitude);
+        Assert.Equal("Stop address", booking.Via);
         Assert.Equal("Dropoff address", booking.Dropoff);
         Assert.Equal(request.DropoffPlaceId, booking.DropoffPlaceId);
         Assert.Equal(request.DropoffLatitude, booking.DropoffLatitude);
@@ -216,6 +219,7 @@ public class BookingsControllerTests
         Assert.Equal(0m, booking.EstimatedAmountDollars);
         Assert.Null(booking.PickupPlaceId);
         Assert.Null(booking.PickupLatitude);
+        Assert.Null(booking.Via);
         Assert.Null(booking.DropoffPlaceId);
         Assert.Null(booking.DropoffLongitude);
     }

@@ -31,6 +31,7 @@ CREATE TABLE "Bookings" (
 	"PickupPlaceId" text,
 	"PickupLatitude" double precision,
 	"PickupLongitude" double precision,
+	"Via" varchar(500),
 	"Dropoff" varchar(500) NOT NULL,
 	"DropoffPlaceId" text,
 	"DropoffLatitude" double precision,

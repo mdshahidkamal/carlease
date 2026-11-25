@@ -10,6 +10,7 @@ public class Booking
     public string? PickupPlaceId { get; set; }
     public double? PickupLatitude { get; set; }
     public double? PickupLongitude { get; set; }
+    public string? Via { get; set; }
     public string Dropoff { get; set; } = string.Empty;
     public string? DropoffPlaceId { get; set; }
     public double? DropoffLatitude { get; set; }

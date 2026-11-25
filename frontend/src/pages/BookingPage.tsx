@@ -84,6 +84,7 @@ function BookingForm({ useGoogle, mapsError }: { useGoogle: boolean; mapsError: 
     const [pickupPeriod, setPickupPeriod] = useState<'AM' | 'PM'>(initialTime.period)
     const [status, setStatus] = useState<{ type: 'idle' | 'success' | 'error'; text: string }>({ type: 'idle', text: '' })
     const [pickupPlace, setPickupPlace] = useState<PlaceValue>(emptyPlace)
+    const [viaPlace, setViaPlace] = useState<PlaceValue | null>(null)
     const [dropoffPlace, setDropoffPlace] = useState<PlaceValue>(emptyPlace)
     const [distance, setDistance] = useState<{ key: string; miles: number } | null>(null)
     const [locationReset, setLocationReset] = useState(0)
@@ -136,7 +137,11 @@ function BookingForm({ useGoogle, mapsError }: { useGoogle: boolean; mapsError: 
             setStatus({ type: 'error', text: 'Enter both a pickup and destination location before submitting.' })
             return
         }
-        if (pickupPlace.resolving || dropoffPlace.resolving || !useGoogle || !distance || distance.key !== routeKey(pickupPlace, dropoffPlace)) {
+        if (viaPlace && !viaPlace.address.trim()) {
+            setStatus({ type: 'error', text: 'Enter a stop location or remove the stop.' })
+            return
+        }
+        if (pickupPlace.resolving || dropoffPlace.resolving || viaPlace?.resolving || !useGoogle || !distance || distance.key !== routeKey(pickupPlace, dropoffPlace, viaPlace)) {
             setStatus({ type: 'error', text: 'A driving distance is required. Wait for the route calculation or check the locations and Google Maps connection.' })
             return
         }
@@ -173,6 +178,7 @@ function BookingForm({ useGoogle, mapsError }: { useGoogle: boolean; mapsError: 
                 body: JSON.stringify({
                     ...payload,
                     pickup: pickupPlace.address,
+                    via: viaPlace?.address.trim() || null,
                     dropoff: dropoffPlace.address,
                     pickupPlaceId: pickupPlace.placeId || null,
                     pickupLatitude: pickupPlace.latitude,
@@ -210,6 +216,7 @@ function BookingForm({ useGoogle, mapsError }: { useGoogle: boolean; mapsError: 
             setPickupMinute(time.minute)
             setPickupPeriod(time.period)
             setPickupPlace(emptyPlace)
+            setViaPlace(null)
             setDropoffPlace(emptyPlace)
             setDistance(null)
             setLocationReset((current) => current + 1)
@@ -234,9 +241,15 @@ function BookingForm({ useGoogle, mapsError }: { useGoogle: boolean; mapsError: 
             </section>
             <form className="booking-card" onSubmit={handleSubmit}>
                 <section><h2><span>1</span>Journey details</h2>
-                    <div className="grid"><LocationInput key={`pickup-${locationReset}`} id="pickup-location" name="pickup" label="From / Pickup location *" placeholder="Search pickup address or place" value={pickupPlace} onChange={(value) => { if (value.resolving || routeKey(value, dropoffPlace) !== routeKey(pickupPlace, dropoffPlace)) setDistance(null); setPickupPlace(value) }} />
-                        <LocationInput key={`dropoff-${locationReset}`} id="dropoff-location" name="dropoff" label="To / Drop-off location *" placeholder="Search destination address or place" value={dropoffPlace} onChange={(value) => { if (value.resolving || routeKey(pickupPlace, value) !== routeKey(pickupPlace, dropoffPlace)) setDistance(null); setDropoffPlace(value) }} />
-                        <RouteDistance pickup={pickupPlace} dropoff={dropoffPlace} useGoogle={useGoogle} onDistance={setDistance} />
+                    <div className="grid"><div className="journey-locations">
+                        <div className="pickup-location-row">
+                            <LocationInput key={`pickup-${locationReset}`} id="pickup-location" name="pickup" label="From / Pickup location *" placeholder="Search pickup address or place" value={pickupPlace} onChange={(value) => { if (value.resolving || routeKey(value, dropoffPlace, viaPlace) !== routeKey(pickupPlace, dropoffPlace, viaPlace)) setDistance(null); setPickupPlace(value) }} />
+                            <button type="button" className="stop-button" onClick={() => { setDistance(null); setViaPlace(viaPlace ? null : emptyPlace) }} aria-label={viaPlace ? 'Remove stop' : 'Add stop'} title={viaPlace ? 'Remove stop' : 'Add stop'}>{viaPlace ? '−' : '+'}</button>
+                        </div>
+                        {viaPlace && <LocationInput key={`via-${locationReset}`} id="via-location" name="via" label="Via / Stop location *" placeholder="Search stop address or place" value={viaPlace} onChange={(value) => { if (value.resolving || routeKey(pickupPlace, dropoffPlace, value) !== routeKey(pickupPlace, dropoffPlace, viaPlace)) setDistance(null); setViaPlace(value) }} />}
+                        <LocationInput key={`dropoff-${locationReset}`} id="dropoff-location" name="dropoff" label="To / Drop-off location *" placeholder="Search destination address or place" value={dropoffPlace} onChange={(value) => { if (value.resolving || routeKey(pickupPlace, value, viaPlace) !== routeKey(pickupPlace, dropoffPlace, viaPlace)) setDistance(null); setDropoffPlace(value) }} />
+                        </div>
+                        <RouteDistance pickup={pickupPlace} dropoff={dropoffPlace} via={viaPlace} useGoogle={useGoogle} onDistance={setDistance} />
                         <div className="field full"><label htmlFor="pickup-date">Pickup date *</label><input className="booking-date-input" id="pickup-date" name="pickupDate" type="date" min={localDate(earliestTime)} value={pickupDate} onFocus={() => setClock(new Date())} onChange={(event) => setPickupDate(event.target.value)} required /></div>
                         <div className="field full"><label htmlFor="pickup-hour">Pickup time *</label><div className="pickup-time-control"><select id="pickup-hour" aria-label="Pickup hour" value={pickupHour} onChange={(event) => setPickupHour(event.target.value)}>{Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}</option>)}</select><span aria-hidden="true">:</span><select id="pickup-minute" aria-label="Pickup minute" value={pickupMinute} onChange={(event) => setPickupMinute(event.target.value)}>{Array.from({ length: 60 }, (_, index) => <option key={index} value={index}>{String(index).padStart(2, '0')}</option>)}</select><select id="pickup-period" aria-label="AM or PM" value={pickupPeriod} onChange={(event) => setPickupPeriod(event.target.value as 'AM' | 'PM')}><option value="AM">AM</option><option value="PM">PM</option></select></div>{invalidPickup && <p className="map-search-error" role="alert">Pickups must be booked at least {MIN_LEAD_HOURS} hours in advance. Earliest available: {formatEarliest(earliestTime)}.</p>}</div></div>
                     {mapsError && <p className="map-search-error" role="alert">{mapsError}</p>}

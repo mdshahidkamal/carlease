@@ -418,6 +418,41 @@
 .field.full {
   grid-column: 1/-1;
 }
+.journey-locations {
+  grid-column: 1/-1;
+  display: grid;
+  gap: 13px;
+}
+.journey-locations > .field {
+  width: calc(100% - 54px);
+}
+.pickup-location-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 10px;
+  align-items: start;
+}
+.booking-card .pickup-location-row .field.full {
+  grid-column: auto;
+}
+.pickup-location-row label {
+  line-height: 18px;
+}
+.stop-button {
+  width: 44px;
+  height: 44px;
+  margin-top: 25px;
+  border: 1px solid rgba(255, 255, 255, .3);
+  border-radius: 10px;
+  background: #141519;
+  color: #fff;
+  cursor: pointer;
+  font-size: 24px;
+}
+.stop-button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
 .field {
   min-width: 0;
 }

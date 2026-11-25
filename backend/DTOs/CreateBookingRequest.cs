@@ -17,7 +17,7 @@ public class CreateBookingRequest
     [Required] public Guid? VehicleId { get; set; }
     [Range(1, 12)] public int PassengerCount { get; set; }
     [Range(0, 12)] public int KidsCount { get; set; }
-    [Range(0, 30)] public int BaggageCount { get; set; }
+    [Required, Range(0, 30)] public int? BaggageCount { get; set; }
     [StringLength(1500)] public string? Preferences { get; set; }
 }
 

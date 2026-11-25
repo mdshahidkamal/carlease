@@ -53,7 +53,6 @@ CREATE INDEX "IX_Bookings_CustomerId" ON "Bookings" ("CustomerId");
 CREATE INDEX "IX_Bookings_VehicleId" ON "Bookings" ("VehicleId");
 
 INSERT INTO "Vehicles" ("VehicleCode", "VehicleName", "Description", "PassengerCapacity", "LuggageCapacity", "BaseFare") VALUES
-    ('SEDAN', 'Sedan', 'Standard executive sedan', 3, 2, 0),
-    ('SUV', 'SUV', 'Premium SUV', 6, 4, 0),
-    ('LUXURY', 'Luxury Sedan', 'Luxury executive sedan', 3, 2, 0),
-    ('VAN', 'Passenger Van', 'Large passenger van', 10, 8, 0);
+    ('LEXUS_RX350', 'Lexus RX350', 'Lexus RX350', 3, 3, 0),
+    ('MITSUBISHI_OUTLANDER', 'Mitsubishi Outlander', 'Mitsubishi Outlander', 4, 3, 0),
+    ('CHEVROLET_SUBURBAN', 'Chevrolet Suburban', 'Chevrolet Suburban', 7, 6, 0);

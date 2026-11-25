@@ -24,6 +24,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         booking.HasIndex(x => x.BookingReference).IsUnique();
         booking.Property(x => x.BookingReference).HasMaxLength(32);
         booking.Property(x => x.Pickup).HasMaxLength(500);
+        booking.Property(x => x.Via).HasMaxLength(500);
         booking.Property(x => x.Dropoff).HasMaxLength(500);
         booking.Property(x => x.Preferences).HasMaxLength(1500);
         booking.Property(x => x.EstimatedDistanceMiles).HasColumnName("EstimatedDistance_Miles").HasPrecision(12, 2);

@@ -13,6 +13,8 @@ namespace CarLease.Api.Controllers;
 [Route("api/[controller]")]
 public class BookingsController(ApplicationDbContext db) : ControllerBase
 {
+    private const int MinimumLeadHours = 24;
+
     [HttpGet]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<ActionResult<List<CustomerBookingSummary>>> GetMyBookings(CancellationToken cancellationToken)
@@ -22,8 +24,10 @@ public class BookingsController(ApplicationDbContext db) : ControllerBase
             return Unauthorized(new { message = "Please sign in to view your bookings." });
 
         var bookings = await db.Bookings.AsNoTracking()
-            .Where(x => x.CustomerId == session.CustomerId)
-            .OrderByDescending(x => x.PickupDateTime).ThenBy(x => x.BookingReference)
+            .Where(x => x.CustomerId == session.CustomerId && x.Status != "COMPLETED")
+            .OrderBy(x => x.Status == "PENDING_REVIEW" ? 0 : 1)
+            .ThenBy(x => x.PickupDateTime).ThenBy(x => x.BookingReference)
+            .Take(5)
             .Select(x => new CustomerBookingSummary(x.BookingReference, x.PickupDateTime, x.Status))
             .ToListAsync(cancellationToken);
         return Ok(bookings);
@@ -39,7 +43,7 @@ public class BookingsController(ApplicationDbContext db) : ControllerBase
 
         var booking = await db.Bookings.AsNoTracking()
             .Where(x => x.CustomerId == session.CustomerId && x.BookingReference == bookingReference)
-            .Select(x => new CustomerBookingDetails(x.BookingReference, x.Pickup, x.Dropoff, x.PickupDateTime, x.Status,
+            .Select(x => new CustomerBookingDetails(x.BookingReference, x.Pickup, x.Via, x.Dropoff, x.PickupDateTime, x.Status,
                 x.VehicleType, x.PassengerCount, x.KidsCount, x.BaggageCount,
                 x.EstimatedDistanceMiles, x.EstimatedAmountDollars, x.Preferences))
             .SingleOrDefaultAsync(cancellationToken);
@@ -60,29 +64,35 @@ public class BookingsController(ApplicationDbContext db) : ControllerBase
         if (request.PickupAtUtc is null)
             return BadRequest(new { message = "Select a pickup date and time." });
         var pickupDateTime = request.PickupAtUtc.Value.UtcDateTime;
-        var currentMinute = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, DateTimeKind.Utc);
-        if (pickupDateTime < currentMinute)
-            return BadRequest(new { message = "The pickup date and time cannot be in the past." });
+        var earliest = now.AddHours(MinimumLeadHours);
+        var earliestMinute = new DateTime(earliest.Year, earliest.Month, earliest.Day, earliest.Hour, earliest.Minute, 0, DateTimeKind.Utc);
+        if (pickupDateTime < earliestMinute)
+            return BadRequest(new { message = $"Pickups must be booked at least {MinimumLeadHours} hours in advance." });
 
+        if (request.PassengerCount is < 1 or > 12)
+            return BadRequest(new { message = "Please enter a valid passenger count." });
+        if (request.BaggageCount is null or < 0 or > 30)
+            return BadRequest(new { message = "Please enter a valid baggage count." });
         var vehicle = await db.Vehicles.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == request.VehicleId && x.IsActive, cancellationToken);
         if (vehicle is null)
             return BadRequest(new { message = "Please select an available vehicle." });
         if (request.PassengerCount > vehicle.PassengerCapacity)
             return BadRequest(new { message = $"The selected vehicle supports no more than {vehicle.PassengerCapacity} passengers." });
-        if (request.BaggageCount > vehicle.LuggageCapacity)
+        if (request.BaggageCount.Value > vehicle.LuggageCapacity)
             return BadRequest(new { message = $"The selected vehicle supports no more than {vehicle.LuggageCapacity} bags." });
 
         var booking = new Booking
         {
             Customer = session.Customer, Pickup = request.Pickup.Trim(), PickupPlaceId = request.PickupPlaceId,
             PickupLatitude = request.PickupLatitude, PickupLongitude = request.PickupLongitude,
+            Via = string.IsNullOrWhiteSpace(request.Via) ? null : request.Via.Trim(),
             Dropoff = request.Dropoff.Trim(), DropoffPlaceId = request.DropoffPlaceId,
             DropoffLatitude = request.DropoffLatitude, DropoffLongitude = request.DropoffLongitude,
             EstimatedDistanceMiles = Math.Round(request.EstimatedDistanceMiles.Value, 2, MidpointRounding.AwayFromZero),
             EstimatedAmountDollars = 0m,
             PickupDateTime = pickupDateTime, VehicleId = vehicle.Id, VehicleType = vehicle.VehicleName,
-            PassengerCount = request.PassengerCount, KidsCount = request.KidsCount, BaggageCount = request.BaggageCount,
+            PassengerCount = request.PassengerCount, KidsCount = request.KidsCount, BaggageCount = request.BaggageCount.Value,
             Preferences = request.Preferences?.Trim()
         };
 

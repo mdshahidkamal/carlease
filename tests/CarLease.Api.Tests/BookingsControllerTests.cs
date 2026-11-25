@@ -44,19 +44,21 @@ public class BookingsControllerTests
         var pickup = DateTime.UtcNow.AddDays(1);
         db.Bookings.AddRange(
             new Booking { Customer = customer, BookingReference = "RLLATE", Pickup = "A", Dropoff = "B", PickupDateTime = pickup.AddHours(1) },
-            new Booking { Customer = customer, BookingReference = "RLEARL", Pickup = "Origin", Dropoff = "Destination", PickupDateTime = pickup, VehicleType = "Sedan", PassengerCount = 2, KidsCount = 1, BaggageCount = 2, EstimatedDistanceMiles = 7.4m, EstimatedAmountDollars = 0m, Preferences = "Child seat" },
-            new Booking { Customer = customer, BookingReference = "RLDONE", Status = "CONFIRMED", PickupDateTime = pickup },
-            new Booking { Customer = customer, BookingReference = "RLREJX", Status = "REJECTED", PickupDateTime = pickup },
+            new Booking { Customer = customer, BookingReference = "RLEARL", Pickup = "Origin", Via = "Stop", Dropoff = "Destination", PickupDateTime = pickup, VehicleType = "Sedan", PassengerCount = 2, KidsCount = 1, BaggageCount = 2, EstimatedDistanceMiles = 7.4m, EstimatedAmountDollars = 0m, Preferences = "Child seat" },
+            new Booking { Customer = customer, BookingReference = "RLDONE", Status = "CONFIRMED", PickupDateTime = pickup.AddHours(-2) },
+            new Booking { Customer = customer, BookingReference = "RLREJX", Status = "REJECTED", PickupDateTime = pickup.AddHours(-1) },
+            new Booking { Customer = customer, BookingReference = "RLACTV", Status = "ACTIVE", PickupDateTime = pickup.AddHours(-2) },
             new Booking { Customer = customer, BookingReference = "RLCOMP", Status = "COMPLETED", PickupDateTime = pickup },
             new Booking { Customer = other, BookingReference = "RLOTHR", PickupDateTime = pickup });
         await db.SaveChangesAsync();
 
         var bookings = Assert.IsType<List<CustomerBookingSummary>>(Assert.IsType<OkObjectResult>((await controller.GetMyBookings(CancellationToken.None)).Result).Value);
-        Assert.Equal(new[] { "RLLATE", "RLCOMP", "RLDONE", "RLEARL", "RLREJX" }, bookings.Select(x => x.BookingReference));
-        Assert.Equal(new[] { "PENDING_REVIEW", "COMPLETED", "CONFIRMED", "PENDING_REVIEW", "REJECTED" }, bookings.Select(x => x.Status));
+        Assert.Equal(new[] { "RLEARL", "RLLATE", "RLACTV", "RLDONE", "RLREJX" }, bookings.Select(x => x.BookingReference));
+        Assert.Equal(new[] { "PENDING_REVIEW", "PENDING_REVIEW", "ACTIVE", "CONFIRMED", "REJECTED" }, bookings.Select(x => x.Status));
         var detail = Assert.IsType<CustomerBookingDetails>(Assert.IsType<OkObjectResult>((await controller.GetMyBooking("RLEARL", CancellationToken.None)).Result).Value);
         Assert.Equal("RLEARL", detail.BookingReference);
         Assert.Equal("Origin", detail.Pickup);
+        Assert.Equal("Stop", detail.Via);
         Assert.Equal("Destination", detail.Dropoff);
         Assert.Equal(pickup, detail.PickupDateTime);
         Assert.Equal("PENDING_REVIEW", detail.Status);
@@ -67,8 +69,35 @@ public class BookingsControllerTests
         Assert.Equal(7.4m, detail.EstimatedDistanceMiles);
         Assert.Equal(0m, detail.EstimatedAmountDollars);
         Assert.Equal("Child seat", detail.Preferences);
+        var completed = Assert.IsType<CustomerBookingDetails>(Assert.IsType<OkObjectResult>((await controller.GetMyBooking("RLCOMP", CancellationToken.None)).Result).Value);
+        Assert.Equal("COMPLETED", completed.Status);
         Assert.IsType<NotFoundObjectResult>((await controller.GetMyBooking("RLOTHR", CancellationToken.None)).Result);
         Assert.IsType<NotFoundObjectResult>((await controller.GetMyBooking("MISSING", CancellationToken.None)).Result);
+    }
+
+    [Fact]
+    public async Task GetMyBookings_LimitsAfterFilteringAndOrdering()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var (controller, _, customer) = await CreateAuthenticatedController(db);
+        var other = new Customer { CustomerName = "Other", Phone = "+1 404 555 0111" };
+        var pickup = new DateTime(2026, 11, 25, 12, 0, 0, DateTimeKind.Utc);
+        db.Bookings.AddRange(
+            new Booking { Customer = customer, BookingReference = "RLPEND2", Status = "PENDING_REVIEW", PickupDateTime = pickup.AddHours(3) },
+            new Booking { Customer = customer, BookingReference = "RLPEND1", Status = "PENDING_REVIEW", PickupDateTime = pickup.AddHours(2) },
+            new Booking { Customer = customer, BookingReference = "RLCONF1", Status = "CONFIRMED", PickupDateTime = pickup.AddHours(-2) },
+            new Booking { Customer = customer, BookingReference = "RLCONF2", Status = "CONFIRMED", PickupDateTime = pickup.AddHours(-1) },
+            new Booking { Customer = customer, BookingReference = "RLACTV1", Status = "ACTIVE", PickupDateTime = pickup },
+            new Booking { Customer = customer, BookingReference = "RLACTV2", Status = "ACTIVE", PickupDateTime = pickup.AddHours(1) },
+            new Booking { Customer = customer, BookingReference = "RLCOMP", Status = "COMPLETED", PickupDateTime = pickup.AddDays(-1) },
+            new Booking { Customer = other, BookingReference = "RLOTHER", Status = "PENDING_REVIEW", PickupDateTime = pickup.AddDays(-1) });
+        await db.SaveChangesAsync();
+
+        var result = await controller.GetMyBookings(CancellationToken.None);
+        var bookings = Assert.IsType<List<CustomerBookingSummary>>(Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal(new[] { "RLPEND1", "RLPEND2", "RLCONF1", "RLCONF2", "RLACTV1" }, bookings.Select(x => x.BookingReference));
     }
 
     [Fact]
@@ -105,11 +134,12 @@ public class BookingsControllerTests
         var (controller, vehicle, customer) = await CreateAuthenticatedController(db);
         var request = CreateRequest();
         request.VehicleId = vehicle.Id;
-        request.PickupAtUtc = DateTimeOffset.UtcNow.AddDays(1).ToOffset(TimeSpan.FromHours(-5));
+        request.PickupAtUtc = DateTimeOffset.UtcNow.AddDays(1).AddMinutes(5).ToOffset(TimeSpan.FromHours(-5));
         request.Pickup = "  Pickup address  ";
         request.PickupPlaceId = "pickup-id";
         request.PickupLatitude = 33.749;
         request.PickupLongitude = -84.388;
+        request.Via = "  Stop address  ";
         request.Dropoff = "  Dropoff address  ";
         request.DropoffPlaceId = "dropoff-id";
         request.DropoffLatitude = 33.64;
@@ -135,6 +165,7 @@ public class BookingsControllerTests
         Assert.Equal(request.PickupPlaceId, booking.PickupPlaceId);
         Assert.Equal(request.PickupLatitude, booking.PickupLatitude);
         Assert.Equal(request.PickupLongitude, booking.PickupLongitude);
+        Assert.Equal("Stop address", booking.Via);
         Assert.Equal("Dropoff address", booking.Dropoff);
         Assert.Equal(request.DropoffPlaceId, booking.DropoffPlaceId);
         Assert.Equal(request.DropoffLatitude, booking.DropoffLatitude);
@@ -188,6 +219,7 @@ public class BookingsControllerTests
         Assert.Equal(0m, booking.EstimatedAmountDollars);
         Assert.Null(booking.PickupPlaceId);
         Assert.Null(booking.PickupLatitude);
+        Assert.Null(booking.Via);
         Assert.Null(booking.DropoffPlaceId);
         Assert.Null(booking.DropoffLongitude);
     }
@@ -197,7 +229,10 @@ public class BookingsControllerTests
     [InlineData("inactive")]
     [InlineData("passengers")]
     [InlineData("baggage")]
+    [InlineData("missing-baggage")]
+    [InlineData("zero-passengers")]
     [InlineData("past")]
+    [InlineData("under-24h")]
     [InlineData("no-time")]
     public async Task Create_RejectsInvalidVehicleCapacityOrTime(string scenario)
     {
@@ -213,7 +248,10 @@ public class BookingsControllerTests
             case "inactive": vehicle.IsActive = false; await db.SaveChangesAsync(); break;
             case "passengers": request.PassengerCount = vehicle.PassengerCapacity + 1; break;
             case "baggage": request.BaggageCount = vehicle.LuggageCapacity + 1; break;
+            case "missing-baggage": request.BaggageCount = null; break;
+            case "zero-passengers": request.PassengerCount = 0; break;
             case "past": request.PickupAtUtc = DateTimeOffset.UtcNow.AddMinutes(-2); break;
+            case "under-24h": request.PickupAtUtc = DateTimeOffset.UtcNow.AddHours(23).AddMinutes(50); break;
             case "no-time": request.PickupAtUtc = null; break;
         }
         var result = await controller.Create(request, CancellationToken.None);
@@ -221,14 +259,52 @@ public class BookingsControllerTests
         Assert.Empty(await db.Bookings.ToListAsync());
     }
 
-    [Fact]
-    public async Task Create_AcceptsCurrentMinuteAndMaximumCapacities()
+    [Theory]
+    [InlineData(3, 3, 3, 3, true)]
+    [InlineData(4, 3, 3, 3, false)]
+    [InlineData(4, 3, 4, 3, true)]
+    [InlineData(2, 4, 4, 3, false)]
+    [InlineData(4, 4, 7, 6, true)]
+    [InlineData(5, 4, 7, 6, true)]
+    [InlineData(7, 6, 7, 6, true)]
+    [InlineData(8, 2, 7, 6, false)]
+    [InlineData(7, 7, 7, 6, false)]
+    [InlineData(2, 0, 3, 3, true)]
+    public async Task Create_EnforcesBothConfiguredCapacities(int passengers, int bags, int capacity, int luggage, bool eligible)
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         await using var db = CreateDatabase(connection);
         var (controller, vehicle, _) = await CreateAuthenticatedController(db);
-        var now = DateTimeOffset.UtcNow;
+        vehicle.PassengerCapacity = capacity;
+        vehicle.LuggageCapacity = luggage;
+        await db.SaveChangesAsync();
+        var request = CreateRequest();
+        request.VehicleId = vehicle.Id;
+        request.PassengerCount = passengers;
+        request.BaggageCount = bags;
+        request.Preferences = "Lexus RX350 and a child seat";
+        var result = await controller.Create(request, CancellationToken.None);
+        if (eligible)
+        {
+            Assert.Equal(StatusCodes.Status201Created, Assert.IsType<ObjectResult>(result.Result).StatusCode);
+            Assert.Equal(request.Preferences, (await db.Bookings.SingleAsync()).Preferences);
+        }
+        else
+        {
+            Assert.IsType<BadRequestObjectResult>(result.Result);
+            Assert.Empty(await db.Bookings.ToListAsync());
+        }
+    }
+
+    [Fact]
+    public async Task Create_AcceptsTwentyFourHourLeadAndMaximumCapacities()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var db = CreateDatabase(connection);
+        var (controller, vehicle, _) = await CreateAuthenticatedController(db);
+        var now = DateTimeOffset.UtcNow.AddHours(24).AddMinutes(1);
         var request = CreateRequest();
         request.VehicleId = vehicle.Id;
         request.PickupAtUtc = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, TimeSpan.Zero);
@@ -299,8 +375,9 @@ public class BookingsControllerTests
         Pickup = "Pickup address",
         Dropoff = "Dropoff address",
         EstimatedDistanceMiles = 7.4m,
-        PickupAtUtc = DateTimeOffset.UtcNow.AddDays(1),
+        PickupAtUtc = DateTimeOffset.UtcNow.AddDays(1).AddMinutes(5),
         VehicleId = Guid.NewGuid(),
-        PassengerCount = 1
+        PassengerCount = 1,
+        BaggageCount = 0
     };
 }

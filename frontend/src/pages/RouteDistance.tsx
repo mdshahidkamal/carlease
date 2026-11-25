@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useApiIsLoaded } from '@vis.gl/react-google-maps'
-import { routeKey } from './placeValue'
+import { routeKey, routeLocation } from './placeValue'
 import type { PlaceValue } from './placeValue'
 
 const METERS_PER_MILE = 1609.344
@@ -16,24 +16,26 @@ type DistanceResult =
 interface RouteDistanceProps {
     pickup: PlaceValue
     dropoff: PlaceValue
+    via: PlaceValue | null
     useGoogle: boolean
     onDistance: (result: { key: string; miles: number }) => void
 }
 
-export function RouteDistance({ pickup, dropoff, useGoogle, onDistance }: RouteDistanceProps) {
-    const hasAddresses = Boolean(pickup.address.trim() && dropoff.address.trim())
-    if (pickup.resolving || dropoff.resolving) return <p className="route-distance" role="status">Loading selected location...</p>
+export function RouteDistance({ pickup, dropoff, via, useGoogle, onDistance }: RouteDistanceProps) {
+    const hasAddresses = Boolean(pickup.address.trim() && dropoff.address.trim() && (!via || via.address.trim()))
+    if (pickup.resolving || dropoff.resolving || via?.resolving) return <p className="route-distance" role="status">Loading selected location...</p>
     if (!hasAddresses) return null
     if (!useGoogle) return <p className="route-distance error" role="status">Driving distance is unavailable while Google Maps is not configured or could not load.</p>
-    return <GoogleRouteDistance pickup={pickup} dropoff={dropoff} onDistance={onDistance} />
+    return <GoogleRouteDistance pickup={pickup} dropoff={dropoff} via={via} onDistance={onDistance} />
 }
 
-function GoogleRouteDistance({ pickup, dropoff, onDistance }: Omit<RouteDistanceProps, 'useGoogle'>) {
+function GoogleRouteDistance({ pickup, dropoff, via, onDistance }: Omit<RouteDistanceProps, 'useGoogle'>) {
     const isLoaded = useApiIsLoaded()
     const [result, setResult] = useState<DistanceResult | null>(null)
-    const origin = pickup.placeId ? `places/${pickup.placeId}` : pickup.address.trim()
-    const destination = dropoff.placeId ? `places/${dropoff.placeId}` : dropoff.address.trim()
-    const key = routeKey(pickup, dropoff)
+    const origin = routeLocation(pickup)
+    const destination = routeLocation(dropoff)
+    const intermediate = via ? routeLocation(via) : null
+    const key = routeKey(pickup, dropoff, via)
 
     useEffect(() => {
         if (!isLoaded) return
@@ -43,7 +45,7 @@ function GoogleRouteDistance({ pickup, dropoff, onDistance }: Omit<RouteDistance
             void (async () => {
                 try {
                     const { Route } = await google.maps.importLibrary('routes')
-                    const { routes } = await Route.computeRoutes({ origin, destination, travelMode: 'DRIVING', fields: ['distanceMeters'] })
+                    const { routes } = await Route.computeRoutes({ origin, destination, ...(intermediate ? { intermediates: [{ location: intermediate }] } : {}), travelMode: 'DRIVING', fields: ['distanceMeters'] })
                     if (!active) return
                     const meters = routes?.[0]?.distanceMeters
                     if (meters === undefined || !Number.isFinite(meters) || meters < 0) {
@@ -64,7 +66,7 @@ function GoogleRouteDistance({ pickup, dropoff, onDistance }: Omit<RouteDistance
             active = false
             window.clearTimeout(timer)
         }
-    }, [isLoaded, origin, destination, key, onDistance])
+    }, [isLoaded, origin, destination, intermediate, key, onDistance])
 
     if (!result || result.key !== key || result.status === 'loading') {
         return <p className="route-distance" role="status">Calculating driving distance…</p>

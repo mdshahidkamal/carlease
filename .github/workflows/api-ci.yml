@@ -12,6 +12,7 @@ on:
       - "backend/**"
       - "frontend/**"
       - "tests/**"
+      - "CarLease.BookingAutoReject/**"
       - ".github/workflows/api-ci.yml"
   pull_request:
     branches: [develop, main]
@@ -19,6 +20,7 @@ on:
       - "backend/**"
       - "frontend/**"
       - "tests/**"
+      - "CarLease.BookingAutoReject/**"
       - ".github/workflows/api-ci.yml"
   workflow_dispatch:
 
@@ -28,9 +30,6 @@ permissions:
 concurrency:
   group: backend-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
-
-env:
-  DOTNET_VERSION: "8.0.x"
 
 jobs:
   build-and-test:
@@ -43,10 +42,13 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          dotnet-version: |
+            8.0.x
+            10.0.x
           cache: true
           cache-dependency-path: |
             backend/CarLease.Api.csproj
+            CarLease.BookingAutoReject/CarLease.BookingAutoReject.csproj
             tests/CarLease.Api.Tests/CarLease.Api.Tests.csproj
 
       - name: Restore solution

@@ -25,6 +25,6 @@ public class Booking
     public int KidsCount { get; set; }
     public int BaggageCount { get; set; }
     public string? Preferences { get; set; }
-    public string Status { get; set; } = "PENDING_REVIEW";
+    public string Status { get; set; } = BookingStatuses.PendingReview;
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 }

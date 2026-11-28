@@ -92,7 +92,7 @@ jobs:
 
   deploy-nonprod:
     name: Deploy tested artifact to nonprod Lambda
-    if: github.ref == 'refs/heads/develop' && vars.LAMBDA_NONPROD_DEPLOY_ENABLED == 'true'
+    if: github.ref == 'refs/heads/develop'
     needs: build-test-package
     runs-on: ubuntu-latest
     environment: nonprod
@@ -106,14 +106,8 @@ jobs:
           name: carlease-booking-auto-reject-${{ github.sha }}
           path: artifacts
 
-      - name: Validate nonprod deployment configuration
-        env:
-          AWS_LAMBDA_NONPROD_ROLE_ARN: ${{ secrets.AWS_LAMBDA_NONPROD_ROLE_ARN }}
+      - name: Validate nonprod deployment package
         run: |
-          test -n "$AWS_LAMBDA_NONPROD_ROLE_ARN" || {
-            echo "::error::Missing nonprod environment secret AWS_LAMBDA_NONPROD_ROLE_ARN"
-            exit 1
-          }
           test -s artifacts/booking-auto-reject.zip || {
             echo "::error::Lambda deployment package is missing or empty"
             exit 1
@@ -122,7 +116,7 @@ jobs:
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_LAMBDA_NONPROD_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::996661624843:role/carlease/github/carlease-github-lambda-nonprod-deploy-role
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Create nonprod Lambda when not provisioned

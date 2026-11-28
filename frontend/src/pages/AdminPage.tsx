@@ -149,9 +149,9 @@ export default function AdminPage() {
     return () => controller.abort()
   }, [mobileStatus, completedAttempt])
 
-  const bookings = (allBookings ?? []).filter((booking) => (status === 'ALL' || booking.status === status) && (!filters.search || `${booking.bookingReference} ${booking.customerName} ${booking.phone}`.toLowerCase().includes(filters.search.toLowerCase())) && (!filters.fromDate || localDate(booking.pickupDateTime) >= filters.fromDate) && (!filters.toDate || localDate(booking.pickupDateTime) <= filters.toDate) && (!filters.vehicle || booking.vehicleType === filters.vehicle))
+  const bookings = (allBookings ?? []).filter((booking) => (status === 'ALL' || booking.status === status || (status === 'REJECTED' && booking.status === 'AUTO_REJECTED')) && (!filters.search || `${booking.bookingReference} ${booking.customerName} ${booking.phone}`.toLowerCase().includes(filters.search.toLowerCase())) && (!filters.fromDate || localDate(booking.pickupDateTime) >= filters.fromDate) && (!filters.toDate || localDate(booking.pickupDateTime) <= filters.toDate) && (!filters.vehicle || booking.vehicleType === filters.vehicle))
   const vehicles = [...new Set((allBookings ?? []).map((booking) => booking.vehicleType).filter(Boolean))].sort()
-  const mobileBookings = mobileStatus === 'COMPLETED' ? completedBookings : allBookings?.filter((booking) => mobileStatus === 'ALL' || booking.status === mobileStatus) ?? null
+  const mobileBookings = mobileStatus === 'COMPLETED' ? completedBookings : allBookings?.filter((booking) => mobileStatus === 'ALL' || booking.status === mobileStatus || (mobileStatus === 'REJECTED' && booking.status === 'AUTO_REJECTED')) ?? null
   function clearFilters() { setSearch(''); setFromDate(''); setToDate(''); setVehicle(''); setFilters({ search: '', fromDate: '', toDate: '', vehicle: '' }) }
   function reset() { clearFilters(); setStatus('ALL'); setMobileStatus('ALL'); setMobileMenu(null); setSidebarOpen(false) }
   function selectStatus(next: Status | 'ALL') { clearFilters(); setStatus(next); setMobileStatus(next); setMobileMenu(null); setSidebarOpen(false) }

@@ -88,7 +88,8 @@ public class AdminDashboardControllerTests
             new Booking { Customer = customer, BookingReference = "RLE", CreatedAtUtc = start, PickupDateTime = start.AddHours(3), Status = "REJECTED", EstimatedAmountDollars = 40m },
             new Booking { Customer = customer, BookingReference = "RLF", CreatedAtUtc = start, PickupDateTime = end, Status = "CONFIRMED", EstimatedAmountDollars = 50m },
             new Booking { Customer = customer, BookingReference = "RLG", CreatedAtUtc = start, PickupDateTime = start.AddTicks(-1), Status = "ACTIVE", EstimatedAmountDollars = 60m },
-            new Booking { Customer = customer, BookingReference = "RLH", CreatedAtUtc = start, PickupDateTime = start.AddHours(4), Status = "NO_SHOW", EstimatedAmountDollars = 70m });
+            new Booking { Customer = customer, BookingReference = "RLH", CreatedAtUtc = start, PickupDateTime = start.AddHours(4), Status = "NO_SHOW", EstimatedAmountDollars = 70m },
+            new Booking { Customer = customer, BookingReference = "RLI", CreatedAtUtc = end, PickupDateTime = start.AddHours(5), Status = "AUTO_REJECTED", EstimatedAmountDollars = 80m });
         await db.SaveChangesAsync();
         var result = await CreateController(db, "Development", IPAddress.Loopback).GetOperationalSummary(start, end, CancellationToken.None);
         var summary = Assert.IsType<AdminOperationalSummary>(Assert.IsType<OkObjectResult>(result.Result).Value);

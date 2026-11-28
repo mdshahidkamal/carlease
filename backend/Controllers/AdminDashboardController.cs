@@ -42,7 +42,7 @@ public class AdminDashboardController(ApplicationDbContext db, IWebHostEnvironme
         var pickups = 0;
         var revenue = 0m;
         var scheduled = db.Bookings.AsNoTracking()
-            .Where(booking => booking.PickupDateTime >= start && booking.PickupDateTime < end && booking.Status != "REJECTED")
+            .Where(booking => booking.PickupDateTime >= start && booking.PickupDateTime < end && booking.Status != "REJECTED" && booking.Status != CarLease.Api.Models.BookingStatuses.AutoRejected)
             .Select(booking => new { booking.Status, booking.EstimatedAmountDollars });
         await foreach (var booking in scheduled.AsAsyncEnumerable().WithCancellation(cancellationToken))
         {

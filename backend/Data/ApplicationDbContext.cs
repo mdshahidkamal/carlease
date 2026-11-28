@@ -7,6 +7,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 {
     public DbSet<Booking> Bookings => Set<Booking>();
 
+    public DbSet<BookingStatusHistory> BookingStatusHistories => Set<BookingStatusHistory>();
+
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
 
     public DbSet<Customer> Customers => Set<Customer>();
@@ -39,6 +41,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .WithMany()
             .HasForeignKey(x => x.VehicleId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        var history = modelBuilder.Entity<BookingStatusHistory>();
+        history.HasKey(x => x.Id);
+        history.HasOne(x => x.Booking).WithMany().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
 
         var vehicle = modelBuilder.Entity<Vehicle>();
         vehicle.HasKey(x => x.Id);

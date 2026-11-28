@@ -154,7 +154,7 @@ jobs:
                   exit 1
                 fi
 
-                echo "Only the unqualified $LATEST function exists; no aliases or event-source mappings are attached."
+                echo "Only the unqualified Lambda version exists; no aliases or event-source mappings are attached."
                 aws lambda delete-function --function-name "$LAMBDA_FUNCTION_NAME"
                 aws lambda wait function-deleted --function-name "$LAMBDA_FUNCTION_NAME"
                 STATE=""

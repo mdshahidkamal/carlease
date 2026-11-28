@@ -70,7 +70,7 @@ public class BookingAutoRejectTests
         await using var fixture = await PostgresFixture.CreateAsync();
         var cutoff = DateTime.UtcNow;
         await fixture.InsertAsync("pending", "PENDING_REVIEW", cutoff.AddMinutes(-1));
-        await fixture.ExecuteAsync("ALTER TABLE \"BookingStatusHistories\" ADD CONSTRAINT reject_audit CHECK (\"Reason\" <> 'RIDE_DATE_EXPIRED')");
+        await fixture.ExecuteAsync("ALTER TABLE \"BookingStatusHistory\" ADD CONSTRAINT reject_audit CHECK (\"Reason\" <> 'RIDE_DATE_EXPIRED')");
         await using var db = fixture.CreateContext();
         await Assert.ThrowsAsync<DbUpdateException>(() => new BookingAutoRejectWorker(db).ProcessBatchAsync(cutoff, 10, CancellationToken.None));
         db.ChangeTracker.Clear();
@@ -138,9 +138,9 @@ public class BookingAutoRejectTests
                   "VehicleType" text NOT NULL, "VehicleId" uuid, "PassengerCount" integer NOT NULL, "KidsCount" integer NOT NULL,
                   "BaggageCount" integer NOT NULL, "Preferences" text, "Status" text NOT NULL, "CreatedAtUtc" timestamptz NOT NULL
                 );
-                CREATE TABLE "BookingStatusHistories" (
-                  "Id" uuid PRIMARY KEY, "BookingId" uuid NOT NULL REFERENCES "Bookings" ("Id"), "PreviousStatus" text NOT NULL,
-                  "NewStatus" text NOT NULL, "Reason" text NOT NULL, "ChangedBy" text NOT NULL, "ChangedAtUtc" timestamptz NOT NULL
+                CREATE TABLE "BookingStatusHistory" (
+                  "Id" uuid PRIMARY KEY, "BookingId" uuid NOT NULL REFERENCES "Bookings" ("Id"), "PreviousStatus" varchar(50) NOT NULL,
+                  "NewStatus" varchar(50) NOT NULL, "Reason" varchar(100) NOT NULL, "ChangedBy" varchar(100) NOT NULL, "ChangedAtUtc" timestamptz NOT NULL
                 );
                 """);
             return fixture;

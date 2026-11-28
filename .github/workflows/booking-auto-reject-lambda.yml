@@ -92,7 +92,7 @@ jobs:
 
   deploy-nonprod:
     name: Deploy tested artifact to nonprod Lambda
-    if: github.ref == 'refs/heads/develop' && vars.LAMBDA_NONPROD_DEPLOY_ENABLED == 'true'
+    if: github.ref == 'refs/heads/develop'
     needs: build-test-package
     runs-on: ubuntu-latest
     environment: nonprod
@@ -106,14 +106,8 @@ jobs:
           name: carlease-booking-auto-reject-${{ github.sha }}
           path: artifacts
 
-      - name: Validate nonprod deployment configuration
-        env:
-          AWS_LAMBDA_NONPROD_ROLE_ARN: ${{ secrets.AWS_LAMBDA_NONPROD_ROLE_ARN }}
+      - name: Validate nonprod deployment package
         run: |
-          test -n "$AWS_LAMBDA_NONPROD_ROLE_ARN" || {
-            echo "::error::Missing nonprod environment secret AWS_LAMBDA_NONPROD_ROLE_ARN"
-            exit 1
-          }
           test -s artifacts/booking-auto-reject.zip || {
             echo "::error::Lambda deployment package is missing or empty"
             exit 1
@@ -122,15 +116,58 @@ jobs:
       - name: Configure AWS credentials using OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_LAMBDA_NONPROD_ROLE_ARN }}
+          role-to-assume: arn:aws:iam::996661624843:role/carlease/github/carlease-github-lambda-nonprod-deploy-role
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Verify existing nonprod Lambda
+      - name: Create nonprod Lambda when not provisioned
+        env:
+          LAMBDA_EXECUTION_ROLE_ARN: arn:aws:iam::996661624843:role/carlease-booking-auto-reject-lambda-role
+          DB_HOST: carlease-postgres.c3ugucioubmr.ap-southeast-2.rds.amazonaws.com
+          DB_NAME: carlease_nonprod
         run: |
-          aws lambda get-function-configuration \
+          if aws lambda get-function-configuration --function-name "$LAMBDA_FUNCTION_NAME" >/dev/null 2>&1; then
+            echo "Existing Lambda found; preserving its configuration."
+          else
+            echo "Creating non-production Lambda with the approved VPC and execution role."
+            aws lambda create-function \
+              --function-name "$LAMBDA_FUNCTION_NAME" \
+              --runtime dotnet10 \
+              --handler "CarLease.BookingAutoReject::CarLease.BookingAutoReject.Function::FunctionHandler" \
+              --role "$LAMBDA_EXECUTION_ROLE_ARN" \
+              --code fileb://artifacts/booking-auto-reject.zip \
+              --timeout 900 \
+              --memory-size 512 \
+              --architectures x86_64 \
+              --vpc-config "SubnetIds=subnet-0eea3c8a7c6483ed1,subnet-0b42fe0856b148247,SecurityGroupIds=sg-04a768807df12a620" \
+              --environment "Variables={DB_HOST=$DB_HOST,DB_NAME=$DB_NAME,DB_PORT=5432,BATCH_SIZE=100}" \
+              --tags Project=CarLease,Environment=nonprod,Feature=BookingAutoRejection
+
+            aws lambda wait function-active-v2 --function-name "$LAMBDA_FUNCTION_NAME"
+          fi
+
+      - name: Verify Lambda runtime, handler, role and VPC
+        env:
+          EXPECTED_ROLE_ARN: arn:aws:iam::996661624843:role/carlease-booking-auto-reject-lambda-role
+        run: |
+          CONFIG="$(aws lambda get-function-configuration --function-name "$LAMBDA_FUNCTION_NAME" --output json)"
+          echo "$CONFIG" | jq '{FunctionName,Runtime,Handler,Role,Timeout,MemorySize,Architectures,VpcConfig,Environment,State}'
+
+          test "$(echo "$CONFIG" | jq -r '.Runtime')" = "dotnet10"
+          test "$(echo "$CONFIG" | jq -r '.Handler')" = "CarLease.BookingAutoReject::CarLease.BookingAutoReject.Function::FunctionHandler"
+          test "$(echo "$CONFIG" | jq -r '.Role')" = "$EXPECTED_ROLE_ARN"
+          test "$(echo "$CONFIG" | jq -r '.State')" = "Active"
+
+      - name: Configure reserved concurrency and execution failure destination
+        run: |
+          aws lambda put-function-concurrency \
             --function-name "$LAMBDA_FUNCTION_NAME" \
-            --query '{FunctionName:FunctionName,Runtime:Runtime,Handler:Handler,Role:Role,State:State}' \
-            --output json
+            --reserved-concurrent-executions 1
+
+          aws lambda put-function-event-invoke-config \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --maximum-event-age-in-seconds 3600 \
+            --maximum-retry-attempts 2 \
+            --destination-config '{"OnFailure":{"Destination":"arn:aws:sqs:ap-southeast-2:996661624843:carlease-auto-reject-nonprod-dlq"}}'
 
       - name: Deploy Lambda code and publish immutable version
         id: deploy

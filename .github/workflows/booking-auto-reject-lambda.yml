@@ -131,6 +131,10 @@ jobs:
             echo "Creating non-production Lambda with the approved VPC and execution role."
             ENVIRONMENT_JSON="$(jq -n --arg host "$DB_HOST" --arg database "$DB_NAME" \
               '{Variables:{DB_HOST:$host,DB_NAME:$database,DB_PORT:"5432",BATCH_SIZE:"100"}}')"
+            VPC_CONFIG_JSON="$(jq -n \
+              '{SubnetIds:["subnet-0eea3c8a7c6483ed1","subnet-0b42fe0856b148247"],SecurityGroupIds:["sg-04a768807df12a620"]}')"
+            TAGS_JSON='{"Project":"CarLease","Environment":"nonprod","Feature":"BookingAutoRejection"}'
+            ARCHITECTURES_JSON='["x86_64"]'
 
             aws lambda create-function \
               --function-name "$LAMBDA_FUNCTION_NAME" \
@@ -140,10 +144,10 @@ jobs:
               --code fileb://artifacts/booking-auto-reject.zip \
               --timeout 900 \
               --memory-size 512 \
-              --architectures x86_64 \
-              --vpc-config "SubnetIds=subnet-0eea3c8a7c6483ed1,subnet-0b42fe0856b148247,SecurityGroupIds=sg-04a768807df12a620" \
+              --architectures "$ARCHITECTURES_JSON" \
+              --vpc-config "$VPC_CONFIG_JSON" \
               --environment "$ENVIRONMENT_JSON" \
-              --tags Project=CarLease,Environment=nonprod,Feature=BookingAutoRejection
+              --tags "$TAGS_JSON"
 
             aws lambda wait function-active-v2 --function-name "$LAMBDA_FUNCTION_NAME"
           fi

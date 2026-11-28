@@ -42,7 +42,48 @@ Actions:
 
 The deployment uses the GitHub Environment named `nonprod`. Keep the deployment gate false/unset until the environment's OIDC role, database secret, frontend URL and ECS service configuration have been validated.
 
-## 4. Production promotion
+
+## 4. Booking auto-rejection Lambda CI/CD
+
+Workflow: `.github/workflows/booking-auto-reject-lambda.yml`
+
+The Lambda worker is deployed independently from the ECS API. Updating the worker does not rebuild or redeploy the API container.
+
+Triggers:
+- Pushes to `feature/*`, `bugfix/*`, `hotfix/*` and `develop` when worker, backend, tests or workflow files change.
+- Pull requests targeting `develop` or `main` for the same paths.
+- Manual dispatch.
+
+Build and validation:
+1. Install the .NET 10 SDK.
+2. Restore and build `backend/CarLease.Api.sln`, which includes the worker project.
+3. Run the solution tests.
+4. Package `CarLease.BookingAutoReject` with Amazon.Lambda.Tools for `net10.0`.
+5. Upload the ZIP as a commit-SHA-specific workflow artifact.
+
+Non-production deployment:
+- Only runs from `develop`.
+- Uses GitHub Environment `nonprod`.
+- Requires environment variable `LAMBDA_NONPROD_DEPLOY_ENABLED=true`.
+- Uses the environment secret `AWS_LAMBDA_NONPROD_ROLE_ARN` to assume the dedicated AWS OIDC deployment role.
+- Updates only the existing Lambda function `carlease-booking-auto-reject-nonprod`, publishes an immutable Lambda version and waits for the update to complete.
+- Does not change Lambda environment variables, execution role, VPC, security groups, timeout, EventBridge schedule or DLQ.
+
+Keep `LAMBDA_NONPROD_DEPLOY_ENABLED` unset/false until the Lambda function exists and its runtime, handler, execution role, networking, environment variables and database permissions have been verified. The deployment workflow intentionally fails if the function does not exist.
+
+AWS OIDC role:
+`arn:aws:iam::996661624843:role/carlease/github/carlease-github-lambda-nonprod-deploy-role`
+
+Its trust policy is restricted to audience `sts.amazonaws.com` and subject:
+```text
+repo:mdshahidkamal/carlease:environment:nonprod
+```
+
+Its permissions are restricted to reading, updating code and publishing versions for the non-production auto-reject Lambda ARN only. It cannot create functions or modify production resources.
+
+Production Lambda deployment is intentionally not enabled by this workflow yet. Add it only after the production Lambda, execution role, database secret, network access and schedule are separately provisioned and verified. Keep production deployment behind the `production` Environment with required reviewers, following the API promotion controls.
+
+## 5. Production promotion
 
 Workflow: `.github/workflows/api-production.yml`
 
@@ -63,7 +104,7 @@ The job uses the GitHub Environment named `production`. Configure required revie
 
 A release PR from `develop` to `main` must only be merged after non-production testing and sign-off. Merging that PR initiates production promotion.
 
-## 5. GitHub Actions configuration
+## 6. GitHub Actions configuration
 
 ### Repository-level secret
 
@@ -121,7 +162,7 @@ repo:mdshahidkamal/carlease:environment:nonprod
 
 All three roles should also require the audience `sts.amazonaws.com` and follow least-privilege IAM permissions.
 
-## 6. Database secret format
+## 7. Database secret format
 
 The deployment workflows expect `DATABASE_SECRET_ARN` to identify an AWS Secrets Manager JSON secret containing:
 
@@ -134,7 +175,7 @@ The deployment workflows expect `DATABASE_SECRET_ARN` to identify an AWS Secrets
 
 The ECS task receives the JSON keys as `DB_USERNAME` and `DB_PASSWORD`. Host, database name and port are configured separately as task environment variables. Do not store database passwords or full connection strings in GitHub.
 
-## 7. Database migration controls
+## 8. Database migration controls
 
 The CI/CD workflows do not run EF Core migrations or `dotnet ef database update`.
 
@@ -147,7 +188,7 @@ For schema changes:
 
 Prefer backward-compatible expand/contract migrations for rolling ECS deployments.
 
-## 8. Current AWS deployment identifiers
+## 9. Current AWS deployment identifiers
 
 - Region: `ap-southeast-2`
 - AWS account: `996661624843`

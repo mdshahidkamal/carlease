@@ -64,12 +64,12 @@ Build and validation:
 Non-production deployment:
 - Only runs from `develop`.
 - Uses GitHub Environment `nonprod`.
-- Requires environment variable `LAMBDA_NONPROD_DEPLOY_ENABLED=true`.
-- Uses the environment secret `AWS_LAMBDA_NONPROD_ROLE_ARN` to assume the dedicated AWS OIDC deployment role.
+- Runs automatically after a successful build/test/package on `develop`.
+- Uses the dedicated AWS OIDC deployment role ARN directly in the workflow; the ARN is not a credential, and the AWS trust policy restricts use to the repository's `nonprod` GitHub Environment.
 - Updates only the existing Lambda function `carlease-booking-auto-reject-nonprod`, publishes an immutable Lambda version and waits for the update to complete.
 - Does not change Lambda environment variables, execution role, VPC, security groups, timeout, EventBridge schedule or DLQ.
 
-Keep `LAMBDA_NONPROD_DEPLOY_ENABLED` unset/false until the Lambda function exists and its runtime, handler, execution role, networking, environment variables and database permissions have been verified. The deployment workflow intentionally fails if the function does not exist.
+The workflow creates the Lambda function on its first non-production deployment when it does not exist, using the pre-provisioned execution role, VPC subnets, security group, database endpoint, runtime, handler and failure destination. On subsequent deployments it preserves the function configuration and updates only the code. The daily EventBridge schedule remains disabled until a separate manual end-to-end verification is complete.
 
 AWS OIDC role:
 `arn:aws:iam::996661624843:role/carlease/github/carlease-github-lambda-nonprod-deploy-role`
@@ -79,7 +79,7 @@ Its trust policy is restricted to audience `sts.amazonaws.com` and subject:
 repo:mdshahidkamal/carlease:environment:nonprod
 ```
 
-Its permissions are restricted to reading, updating code and publishing versions for the non-production auto-reject Lambda ARN only. It cannot create functions or modify production resources.
+Its permissions are restricted to creating the named non-production Lambda, managing its code/configuration/concurrency/failure destination, and passing only the dedicated execution role. It cannot modify production resources.
 
 Production Lambda deployment is intentionally not enabled by this workflow yet. Add it only after the production Lambda, execution role, database secret, network access and schedule are separately provisioned and verified. Keep production deployment behind the `production` Environment with required reviewers, following the API promotion controls.
 

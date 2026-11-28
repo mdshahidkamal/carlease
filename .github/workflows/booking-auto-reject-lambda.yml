@@ -119,17 +119,56 @@ jobs:
           role-to-assume: arn:aws:iam::996661624843:role/carlease/github/carlease-github-lambda-nonprod-deploy-role
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Create nonprod Lambda when not provisioned
+      - name: Create or recover nonprod Lambda
         env:
           LAMBDA_EXECUTION_ROLE_ARN: arn:aws:iam::996661624843:role/carlease-booking-auto-reject-lambda-role
           DB_HOST: carlease-postgres.c3ugucioubmr.ap-southeast-2.rds.amazonaws.com
           DB_NAME: carlease_nonprod
+        shell: bash
         run: |
-          if aws lambda get-function-configuration --function-name "$LAMBDA_FUNCTION_NAME" >/dev/null 2>&1; then
-          echo "Existing Lambda found; preserving its configuration."
-          else
-          echo "Creating non-production Lambda with the approved VPC and execution role."
-          python3 - <<'PY'
+          set -euo pipefail
+
+          STATE="$(aws lambda get-function-configuration \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --query 'State' --output text 2>/dev/null || true)"
+
+          if [ -n "$STATE" ] && [ "$STATE" != "None" ]; then
+            echo "Existing Lambda state: $STATE"
+            case "$STATE" in
+              Active)
+                echo "Active Lambda found; preserving its configuration."
+                ;;
+              Pending)
+                echo "Lambda is pending; waiting for activation."
+                aws lambda wait function-active-v2 --function-name "$LAMBDA_FUNCTION_NAME"
+                ;;
+              Failed)
+                echo "::warning::Lambda is in Failed state. Checking that it is safe to recreate."
+                VERSION_COUNT="$(aws lambda list-versions-by-function --function-name "$LAMBDA_FUNCTION_NAME" --query 'length(Versions)' --output text)"
+                ALIAS_COUNT="$(aws lambda list-aliases --function-name "$LAMBDA_FUNCTION_NAME" --query 'length(Aliases)' --output text)"
+                MAPPING_COUNT="$(aws lambda list-event-source-mappings --function-name "$LAMBDA_FUNCTION_NAME" --query 'length(EventSourceMappings)' --output text)"
+
+                if [ "$VERSION_COUNT" != "1" ] || [ "$ALIAS_COUNT" != "0" ] || [ "$MAPPING_COUNT" != "0" ]; then
+                  echo "::error::Refusing automatic recovery: failed Lambda has published versions, aliases, or event-source mappings."
+                  echo "Versions=$VERSION_COUNT Aliases=$ALIAS_COUNT EventSourceMappings=$MAPPING_COUNT"
+                  exit 1
+                fi
+
+                echo "Only the unqualified Lambda version exists; no aliases or event-source mappings are attached."
+                aws lambda delete-function --function-name "$LAMBDA_FUNCTION_NAME"
+                aws lambda wait function-deleted --function-name "$LAMBDA_FUNCTION_NAME"
+                STATE=""
+                ;;
+              *)
+                echo "::error::Lambda is in unexpected state '$STATE'; refusing to modify it."
+                exit 1
+                ;;
+            esac
+          fi
+
+          if [ -z "$STATE" ] || [ "$STATE" = "None" ]; then
+            echo "Creating non-production Lambda with the approved execution role and VPC."
+            python3 - <<'PY'
           import base64
           import json
           import os
@@ -147,20 +186,15 @@ jobs:
               "MemorySize": 512,
               "Architectures": ["x86_64"],
               "VpcConfig": {
-                  "SubnetIds": [
-                      "subnet-0eea3c8a7c6483ed1",
-                      "subnet-0b42fe0856b148247"
-                  ],
+                  "SubnetIds": ["subnet-0eea3c8a7c6483ed1", "subnet-0b42fe0856b148247"],
                   "SecurityGroupIds": ["sg-04a768807df12a620"]
               },
-              "Environment": {
-                  "Variables": {
-                      "DB_HOST": os.environ["DB_HOST"],
-                      "DB_NAME": os.environ["DB_NAME"],
-                      "DB_PORT": "5432",
-                      "BATCH_SIZE": "100"
-                  }
-              },
+              "Environment": {"Variables": {
+                  "DB_HOST": os.environ["DB_HOST"],
+                  "DB_NAME": os.environ["DB_NAME"],
+                  "DB_PORT": "5432",
+                  "BATCH_SIZE": "100"
+              }},
               "Tags": {
                   "Project": "CarLease",
                   "Environment": "nonprod",
@@ -172,9 +206,18 @@ jobs:
           with open("/tmp/carlease-lambda-create.json", "w", encoding="utf-8") as target:
               json.dump(request, target)
           PY
-          aws lambda create-function --cli-input-json file:///tmp/carlease-lambda-create.json
-          aws lambda wait function-active-v2 --function-name "$LAMBDA_FUNCTION_NAME"
+            aws lambda create-function --cli-input-json file:///tmp/carlease-lambda-create.json
+            if ! aws lambda wait function-active-v2 --function-name "$LAMBDA_FUNCTION_NAME"; then
+              echo "::error::Lambda did not become Active after creation. Current AWS state:"
+              aws lambda get-function-configuration --function-name "$LAMBDA_FUNCTION_NAME" || true
+              exit 1
+            fi
           fi
+
+          aws lambda get-function-configuration \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --query '{State:State,StateReason:StateReason,StateReasonCode:StateReasonCode}' \
+            --output json
 
       - name: Verify Lambda runtime, handler, role and VPC
         env:
@@ -187,6 +230,9 @@ jobs:
           test "$(echo "$CONFIG" | jq -r '.Handler')" = "CarLease.BookingAutoReject::CarLease.BookingAutoReject.Function::FunctionHandler"
           test "$(echo "$CONFIG" | jq -r '.Role')" = "$EXPECTED_ROLE_ARN"
           test "$(echo "$CONFIG" | jq -r '.State')" = "Active"
+          echo "$CONFIG" | jq -e '.VpcConfig.VpcId == "vpc-07f152c4d74caf2dc"' >/dev/null
+          echo "$CONFIG" | jq -e '(.VpcConfig.SubnetIds | sort) == (["subnet-0eea3c8a7c6483ed1","subnet-0b42fe0856b148247"] | sort)' >/dev/null
+          echo "$CONFIG" | jq -e '(.VpcConfig.SecurityGroupIds | sort) == (["sg-04a768807df12a620"] | sort)' >/dev/null
 
       - name: Configure reserved concurrency and execution failure destination
         run: |

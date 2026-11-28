@@ -43,7 +43,12 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             .OnDelete(DeleteBehavior.Restrict);
 
         var history = modelBuilder.Entity<BookingStatusHistory>();
+        history.ToTable("BookingStatusHistory");
         history.HasKey(x => x.Id);
+        history.Property(x => x.PreviousStatus).HasMaxLength(50).IsRequired();
+        history.Property(x => x.NewStatus).HasMaxLength(50).IsRequired();
+        history.Property(x => x.Reason).HasMaxLength(100).IsRequired();
+        history.Property(x => x.ChangedBy).HasMaxLength(100).IsRequired();
         history.HasOne(x => x.Booking).WithMany().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
 
         var vehicle = modelBuilder.Entity<Vehicle>();

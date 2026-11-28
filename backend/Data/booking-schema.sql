@@ -55,16 +55,16 @@ CREATE INDEX "IX_Bookings_VehicleId" ON "Bookings" ("VehicleId");
 CREATE INDEX "IX_Bookings_AutoReject_PickupDateTime" ON "Bookings" ("PickupDateTime", "Id")
     WHERE "Status" IN ('PENDING_REVIEW', 'CONFIRMED');
 
-CREATE TABLE "BookingStatusHistories" (
+CREATE TABLE "BookingStatusHistory" (
     "Id" uuid PRIMARY KEY,
     "BookingId" uuid NOT NULL REFERENCES "Bookings" ("Id") ON DELETE RESTRICT,
-    "PreviousStatus" text NOT NULL,
-    "NewStatus" text NOT NULL,
-    "Reason" text NOT NULL,
-    "ChangedBy" text NOT NULL,
+    "PreviousStatus" varchar(50) NOT NULL,
+    "NewStatus" varchar(50) NOT NULL,
+    "Reason" varchar(100) NOT NULL,
+    "ChangedBy" varchar(100) NOT NULL,
     "ChangedAtUtc" timestamp with time zone NOT NULL
 );
-CREATE INDEX "IX_BookingStatusHistories_BookingId" ON "BookingStatusHistories" ("BookingId");
+CREATE INDEX "IX_BookingStatusHistory_BookingId" ON "BookingStatusHistory" ("BookingId");
 
 INSERT INTO "Vehicles" ("VehicleCode", "VehicleName", "Description", "PassengerCapacity", "LuggageCapacity", "BaseFare") VALUES
     ('LEXUS_RX350', 'Lexus RX350', 'Lexus RX350', 3, 3, 0),

@@ -129,6 +129,9 @@ jobs:
             echo "Existing Lambda found; preserving its configuration."
           else
             echo "Creating non-production Lambda with the approved VPC and execution role."
+            ENVIRONMENT_JSON="$(jq -n --arg host "$DB_HOST" --arg database "$DB_NAME" \
+              '{Variables:{DB_HOST:$host,DB_NAME:$database,DB_PORT:"5432",BATCH_SIZE:"100"}}')"
+
             aws lambda create-function \
               --function-name "$LAMBDA_FUNCTION_NAME" \
               --runtime dotnet10 \
@@ -139,7 +142,7 @@ jobs:
               --memory-size 512 \
               --architectures x86_64 \
               --vpc-config "SubnetIds=subnet-0eea3c8a7c6483ed1,subnet-0b42fe0856b148247,SecurityGroupIds=sg-04a768807df12a620" \
-              --environment "Variables={DB_HOST=$DB_HOST,DB_NAME=$DB_NAME,DB_PORT=5432,BATCH_SIZE=100}" \
+              --environment "$ENVIRONMENT_JSON" \
               --tags Project=CarLease,Environment=nonprod,Feature=BookingAutoRejection
 
             aws lambda wait function-active-v2 --function-name "$LAMBDA_FUNCTION_NAME"

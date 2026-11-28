@@ -1,0 +1,187 @@
+name: Booking Auto-Reject Lambda - Build, test and deploy
+
+on:
+  push:
+    branches:
+      - develop
+      - "feature/**"
+      - "bugfix/**"
+      - "hotfix/**"
+    paths:
+      - "CarLease.BookingAutoReject/**"
+      - "backend/**"
+      - "tests/**"
+      - ".github/workflows/booking-auto-reject-lambda.yml"
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "CarLease.BookingAutoReject/**"
+      - "backend/**"
+      - "tests/**"
+      - ".github/workflows/booking-auto-reject-lambda.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: booking-auto-reject-lambda-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-2
+  LAMBDA_FUNCTION_NAME: carlease-booking-auto-reject-nonprod
+
+jobs:
+  build-test-package:
+    name: Restore, build, test and package Lambda
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+          cache: true
+          cache-dependency-path: |
+            backend/CarLease.Api.csproj
+            CarLease.BookingAutoReject/CarLease.BookingAutoReject.csproj
+            tests/CarLease.Api.Tests/CarLease.Api.Tests.csproj
+
+      - name: Restore solution
+        run: dotnet restore backend/CarLease.Api.sln
+
+      - name: Build solution
+        run: dotnet build backend/CarLease.Api.sln --configuration Release --no-restore
+
+      - name: Run unit and integration tests
+        run: dotnet test backend/CarLease.Api.sln --configuration Release --no-build --logger "trx;LogFileName=booking-auto-reject-tests.trx"
+
+      - name: Install AWS Lambda .NET tooling
+        run: dotnet tool install -g Amazon.Lambda.Tools
+
+      - name: Package Lambda deployment artifact
+        run: |
+          mkdir -p artifacts
+          dotnet lambda package \
+            --project-location CarLease.BookingAutoReject \
+            --configuration Release \
+            --framework net10.0 \
+            --output-package artifacts/booking-auto-reject.zip
+
+      - name: Upload Lambda deployment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carlease-booking-auto-reject-${{ github.sha }}
+          path: artifacts/booking-auto-reject.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-auto-reject-test-results
+          path: "**/TestResults/*.trx"
+          if-no-files-found: ignore
+          retention-days: 7
+
+  deploy-nonprod:
+    name: Deploy tested artifact to nonprod Lambda
+    if: github.ref == 'refs/heads/develop' && vars.LAMBDA_NONPROD_DEPLOY_ENABLED == 'true'
+    needs: build-test-package
+    runs-on: ubuntu-latest
+    environment: nonprod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download tested Lambda artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: carlease-booking-auto-reject-${{ github.sha }}
+          path: artifacts
+
+      - name: Validate nonprod deployment configuration
+        env:
+          AWS_LAMBDA_NONPROD_ROLE_ARN: ${{ secrets.AWS_LAMBDA_NONPROD_ROLE_ARN }}
+        run: |
+          test -n "$AWS_LAMBDA_NONPROD_ROLE_ARN" || {
+            echo "::error::Missing nonprod environment secret AWS_LAMBDA_NONPROD_ROLE_ARN"
+            exit 1
+          }
+          test -s artifacts/booking-auto-reject.zip || {
+            echo "::error::Lambda deployment package is missing or empty"
+            exit 1
+          }
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_LAMBDA_NONPROD_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify existing nonprod Lambda
+        run: |
+          aws lambda get-function-configuration \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --query '{FunctionName:FunctionName,Runtime:Runtime,Handler:Handler,Role:Role,State:State}' \
+            --output json
+
+      - name: Deploy Lambda code and publish immutable version
+        id: deploy
+        run: |
+          VERSION="$(aws lambda update-function-code \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --zip-file fileb://artifacts/booking-auto-reject.zip \
+            --publish \
+            --query 'Version' \
+            --output text)"
+
+          test -n "$VERSION" && test "$VERSION" != "None" || {
+            echo "::error::Lambda deployment did not return a published version"
+            exit 1
+          }
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Published Lambda version: $VERSION"
+
+      - name: Wait for Lambda update to complete
+        run: |
+          aws lambda wait function-updated-v2 --function-name "$LAMBDA_FUNCTION_NAME"
+
+          STATUS="$(aws lambda get-function-configuration \
+            --function-name "$LAMBDA_FUNCTION_NAME" \
+            --query 'LastUpdateStatus' --output text)"
+
+          if [ "$STATUS" != "Successful" ]; then
+            echo "::error::Lambda update status is $STATUS"
+            aws lambda get-function-configuration --function-name "$LAMBDA_FUNCTION_NAME"
+            exit 1
+          fi
+
+      - name: Record deployment metadata
+        env:
+          LAMBDA_VERSION: ${{ steps.deploy.outputs.version }}
+        run: |
+          {
+            echo "Function: $LAMBDA_FUNCTION_NAME"
+            echo "Version: $LAMBDA_VERSION"
+            echo "Commit: $GITHUB_SHA"
+            echo "Region: $AWS_REGION"
+          } | tee lambda-deployment.txt
+
+      - name: Upload deployment metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: carlease-booking-auto-reject-deployment-${{ github.sha }}
+          path: lambda-deployment.txt
+          if-no-files-found: error
+          retention-days: 90
+
+# Production deployment will be added after the production Lambda, execution role,
+# network access, secret and schedule are provisioned and verified. This workflow
+# intentionally updates only the existing non-production Lambda function.

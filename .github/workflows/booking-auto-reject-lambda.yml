@@ -129,25 +129,52 @@ jobs:
             echo "Existing Lambda found; preserving its configuration."
           else
             echo "Creating non-production Lambda with the approved VPC and execution role."
-            ENVIRONMENT_JSON="$(jq -n --arg host "$DB_HOST" --arg database "$DB_NAME" \
-              '{Variables:{DB_HOST:$host,DB_NAME:$database,DB_PORT:"5432",BATCH_SIZE:"100"}}')"
-            VPC_CONFIG_JSON="$(jq -n \
-              '{SubnetIds:["subnet-0eea3c8a7c6483ed1","subnet-0b42fe0856b148247"],SecurityGroupIds:["sg-04a768807df12a620"]}')"
-            TAGS_JSON='{"Project":"CarLease","Environment":"nonprod","Feature":"BookingAutoRejection"}'
-            ARCHITECTURES_JSON='["x86_64"]'
+            python3 - <<'PY'
+            import base64
+            import json
+            import os
+
+            with open("artifacts/booking-auto-reject.zip", "rb") as package:
+                zip_b64 = base64.b64encode(package.read()).decode("ascii")
+
+            request = {
+                "FunctionName": os.environ["LAMBDA_FUNCTION_NAME"],
+                "Runtime": "dotnet10",
+                "Handler": "CarLease.BookingAutoReject::CarLease.BookingAutoReject.Function::FunctionHandler",
+                "Role": os.environ["LAMBDA_EXECUTION_ROLE_ARN"],
+                "Code": {"ZipFile": zip_b64},
+                "Timeout": 900,
+                "MemorySize": 512,
+                "Architectures": ["x86_64"],
+                "VpcConfig": {
+                    "SubnetIds": [
+                        "subnet-0eea3c8a7c6483ed1",
+                        "subnet-0b42fe0856b148247"
+                    ],
+                    "SecurityGroupIds": ["sg-04a768807df12a620"]
+                },
+                "Environment": {
+                    "Variables": {
+                        "DB_HOST": os.environ["DB_HOST"],
+                        "DB_NAME": os.environ["DB_NAME"],
+                        "DB_PORT": "5432",
+                        "BATCH_SIZE": "100"
+                    }
+                },
+                "Tags": {
+                    "Project": "CarLease",
+                    "Environment": "nonprod",
+                    "Feature": "BookingAutoRejection"
+                },
+                "Description": "Scheduled non-production auto-rejection of expired bookings with status audit history"
+            }
+
+            with open("/tmp/carlease-lambda-create.json", "w", encoding="utf-8") as target:
+                json.dump(request, target)
+            PY
 
             aws lambda create-function \
-              --function-name "$LAMBDA_FUNCTION_NAME" \
-              --runtime dotnet10 \
-              --handler "CarLease.BookingAutoReject::CarLease.BookingAutoReject.Function::FunctionHandler" \
-              --role "$LAMBDA_EXECUTION_ROLE_ARN" \
-              --code fileb://artifacts/booking-auto-reject.zip \
-              --timeout 900 \
-              --memory-size 512 \
-              --architectures "$ARCHITECTURES_JSON" \
-              --vpc-config "$VPC_CONFIG_JSON" \
-              --environment "$ENVIRONMENT_JSON" \
-              --tags "$TAGS_JSON"
+              --cli-input-json file:///tmp/carlease-lambda-create.json
 
             aws lambda wait function-active-v2 --function-name "$LAMBDA_FUNCTION_NAME"
           fi

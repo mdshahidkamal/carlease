@@ -156,7 +156,30 @@ jobs:
 
                 echo "Only the unqualified Lambda version exists; no aliases or event-source mappings are attached."
                 aws lambda delete-function --function-name "$LAMBDA_FUNCTION_NAME"
-                aws lambda wait function-deleted --function-name "$LAMBDA_FUNCTION_NAME"
+
+                # AWS CLI has no function-deleted waiter. Poll until Lambda confirms
+                # ResourceNotFoundException; fail on any other error or timeout.
+                DELETED=false
+                for attempt in $(seq 1 36); do
+                  if DELETE_CHECK="$(aws lambda get-function-configuration \
+                    --function-name "$LAMBDA_FUNCTION_NAME" 2>&1)"; then
+                    echo "Lambda deletion is still propagating (attempt $attempt/36)."
+                    sleep 5
+                  elif echo "$DELETE_CHECK" | grep -q "ResourceNotFoundException"; then
+                    echo "Lambda deletion confirmed."
+                    DELETED=true
+                    break
+                  else
+                    echo "::error::Unexpected error while verifying Lambda deletion:"
+                    echo "$DELETE_CHECK"
+                    exit 1
+                  fi
+                done
+
+                if [ "$DELETED" != "true" ]; then
+                  echo "::error::Timed out waiting for Lambda deletion."
+                  exit 1
+                fi
                 STATE=""
                 ;;
               *)
